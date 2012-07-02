@@ -9,10 +9,10 @@
 package main
 
 import (
-	"github.com/xb95/singularity/safedoozer"
-	"code.google.com/p/gozmq/zmq"
 	"flag"
 	"fmt"
+	zmq "github.com/alecthomas/gozmq"
+	"github.com/xb95/singularity/safedoozer"
 	"log"
 	"os"
 	"strings"
@@ -24,7 +24,7 @@ import (
 type EmptyFunc func()
 type WaitChan chan int
 
-var zmq_ctx *zmq.Context
+var zmq_ctx zmq.Context
 var dzr *safedoozer.Conn
 var chatter = 1 // 0 = quiet, 1 = normal, 2 = verbose
 
@@ -50,7 +50,7 @@ func main() {
 	defer dzr.Close()
 
 	var err error // If we use := below, we shadow the global, which is bad.
-	zmq_ctx, err = zmq.Init(1)
+	zmq_ctx, err = zmq.NewContext()
 	if err != nil {
 		fatal("failed to init zmq: %s", err)
 	}
@@ -94,7 +94,6 @@ func main() {
 				doCommand(host, args[1])
 				waiter.Done()
 			}(host)
-			waiter.Wait()
 		}
 		waiter.Wait()
 	default:
@@ -114,8 +113,8 @@ func doCommand(host, command string) {
 	}
 
 	start := time.Now()
-	sock.SendString(fmt.Sprintf("exec %s", command), 0)
-	resp, err := sock.RecvString(0)
+	sock.Send([]byte(fmt.Sprintf("exec %s", command)), 0)
+	resp, err := sock.Recv(0)
 	if err != nil {
 		warn("[%s] failed: %s", host, err)
 		return
@@ -124,7 +123,7 @@ func doCommand(host, command string) {
 
 	// Annoying way to remove a trailing empty line? Maybe there is a better
 	// way of doing this.
-	split := strings.Split(resp, "\n")
+	split := strings.Split(string(resp), "\n")
 	endpt := len(split) - 1
 	for i := endpt; i >= 0; i-- {
 		if split[i] != "" {
@@ -145,7 +144,7 @@ func nodes() []string {
 	return dzr.GetdirLatest("/s/lock")
 }
 
-func socketForHost(host string) *zmq.Socket {
+func socketForHost(host string) zmq.Socket {
 	// BUG(mark): We should be a little more fancy about how to get a socket to
 	// the machine we're trying to reach.
 
@@ -154,7 +153,7 @@ func socketForHost(host string) *zmq.Socket {
 		return nil
 	}
 
-	sock, err := zmq_ctx.Socket(zmq.REQ)
+	sock, err := zmq_ctx.NewSocket(zmq.REQ)
 	if err != nil {
 		fatal("failed to create zmq socket: %s", err)
 	}

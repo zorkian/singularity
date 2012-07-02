@@ -15,10 +15,10 @@
 package main
 
 import (
-	"github.com/xb95/singularity/safedoozer"
-	"code.google.com/p/gozmq/zmq"
 	"flag"
 	"fmt"
+	zmq "github.com/alecthomas/gozmq"
+	"github.com/xb95/singularity/safedoozer"
 	"log"
 	"math/rand"
 	"os"
@@ -29,7 +29,7 @@ import (
 
 type InfoMap map[string]string
 
-var zmq_ctx *zmq.Context
+var zmq_ctx zmq.Context
 var dzr *safedoozer.Conn
 var chatter = 1 // 0 = quiet, 1 = normal, 2 = verbose
 
@@ -54,7 +54,7 @@ func main() {
 	defer dzr.Close()
 
 	var err error // If we use := below, we shadow the global, which is bad.
-	zmq_ctx, err = zmq.Init(1)
+	zmq_ctx, err = zmq.NewContext()
 	if err != nil {
 		fatal("failed to init zmq: %s", err)
 	}
@@ -119,7 +119,7 @@ func runClient() {
 	// Actually, we do want to support multiple simultaneous queries so that
 	// people can write subsystems that do interesting things.
 	//
-	sock, err := zmq_ctx.Socket(zmq.REP)
+	sock, err := zmq_ctx.NewSocket(zmq.REP)
 	if err != nil {
 		fatal("failed to make zmq socket: %s", err)
 	}
@@ -131,7 +131,7 @@ func runClient() {
 	}
 
 	for {
-		data, err := sock.RecvString(0)
+		data, err := sock.Recv(0)
 		if err != nil {
 			// Don't consider errors fatal, since it's probably just somebody
 			// sending us junk data.
@@ -139,24 +139,24 @@ func runClient() {
 			continue
 		}
 
-		parsed := strings.SplitN(strings.TrimSpace(data), " ", 2)
+		parsed := strings.SplitN(strings.TrimSpace(string(data)), " ", 2)
 		if len(parsed) < 1 {
-			sock.SendString("no command given", 0)
+			sock.Send([]byte("no command given"), 0)
 			continue
 		}
 
 		switch parsed[0] {
 		case "exec":
 			if len(parsed) < 2 {
-				sock.SendString("exec requires an argument", 0)
+				sock.Send([]byte("exec requires an argument"), 0)
 			} else {
 				sock.Send(handleClientExec(parsed[1]), 0)
 			}
 		case "die":
-			sock.SendString("dying", 0)
+			sock.Send([]byte("dying"), 0)
 			fatal("somebody requested we die, good-bye cruel world!")
 		default:
-			sock.SendString(fmt.Sprintf("unknown command: %s", parsed[0]), 0)
+			sock.Send([]byte(fmt.Sprintf("unknown command: %s", parsed[0])), 0)
 		}
 	}
 }
