@@ -116,7 +116,8 @@ func runClient() {
 	// lightweight. If we are taking substantial CPU (many concurrent requests)
 	// then there is probably something inherently broken in what we're doing.
 	//
-	// The tendency to overengineer is part of being a programmer. Avoid it.
+	// Actually, we do want to support multiple simultaneous queries so that
+	// people can write subsystems that do interesting things.
 	//
 	sock, err := zmq_ctx.Socket(zmq.REP)
 	if err != nil {
@@ -130,7 +131,7 @@ func runClient() {
 	}
 
 	for {
-		data, err := sock.Recv(0)
+		data, err := sock.RecvString(0)
 		if err != nil {
 			// Don't consider errors fatal, since it's probably just somebody
 			// sending us junk data.
@@ -138,25 +139,24 @@ func runClient() {
 			continue
 		}
 
-		sdata := strings.TrimSpace(string(data))
-		parsed := strings.SplitN(sdata, " ", 2)
+		parsed := strings.SplitN(strings.TrimSpace(data), " ", 2)
 		if len(parsed) < 1 {
-			sock.Send([]byte("no command given"), 0)
+			sock.SendString("no command given", 0)
 			continue
 		}
 
 		switch parsed[0] {
 		case "exec":
 			if len(parsed) < 2 {
-				sock.Send([]byte("exec requires an argument"), 0)
+				sock.SendString("exec requires an argument", 0)
 			} else {
 				sock.Send(handleClientExec(parsed[1]), 0)
 			}
 		case "die":
-			sock.Send([]byte("dying"), 0)
+			sock.SendString("dying", 0)
 			fatal("somebody requested we die, good-bye cruel world!")
 		default:
-			sock.Send([]byte(fmt.Sprintf("unknown command: %s", parsed[0])), 0)
+			sock.SendString(fmt.Sprintf("unknown command: %s", parsed[0]), 0)
 		}
 	}
 }

@@ -3,6 +3,10 @@
 *.a
 *.so
 
+# Compiled files
+agent/agent
+client/client
+
 # Folders
 _obj
 _test

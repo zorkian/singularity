@@ -94,6 +94,7 @@ func main() {
 				doCommand(host, args[1])
 				waiter.Done()
 			}(host)
+			waiter.Wait()
 		}
 		waiter.Wait()
 	default:
@@ -113,8 +114,8 @@ func doCommand(host, command string) {
 	}
 
 	start := time.Now()
-	sock.Send([]byte(fmt.Sprintf("exec %s", command)), 0)
-	resp, err := sock.Recv(0)
+	sock.SendString(fmt.Sprintf("exec %s", command), 0)
+	resp, err := sock.RecvString(0)
 	if err != nil {
 		warn("[%s] failed: %s", host, err)
 		return
@@ -123,7 +124,7 @@ func doCommand(host, command string) {
 
 	// Annoying way to remove a trailing empty line? Maybe there is a better
 	// way of doing this.
-	split := strings.Split(string(resp), "\n")
+	split := strings.Split(resp, "\n")
 	endpt := len(split) - 1
 	for i := endpt; i >= 0; i-- {
 		if split[i] != "" {
