@@ -1,0 +1,39 @@
+This is a todo file, huzzah.
+
+* BROKER SYSTEM?
+
+A very large component is brokers to enable us to talk to nodes without
+having to connect directly to them, and subscribe to updates.
+
+* Broker implementation, which is a sub-module of the agent. Some agents
+  are brokers, some aren't. But they run in a separate goroutine so it
+  is logically separate from our functionality.
+
+* TAGS (roles, etc)
+
+We need a way to select machines without having to select by name. Doing
+it by some sort of tag system (key=value) would enable us to add roles,
+etc. Plus, being able to select by facter.
+
+* ALERTS/MESSAGES
+
+Command line tools for sending alerts/messages back and forth and
+subscribing?
+
+* SUBSYSTEMS
+
+I want to be able to implement something like Angel. I don't want this
+to be in the core though. Someone can write something, in whatever
+language, maybe with a ZMQ specific protocol? Or too much overhead?
+
+ - You register yourself as a subsystem.
+
+ - You can use the Singularity core for passing messages and data.
+
+* OTHER NOTES
+
+Read RFC 5735 and create a function that auto-binds to any assigned IPs
+that fall inside appropriate ranges. I.e., we should bind on IPs that
+are in the loopback range and private network ranges, but NOT on any
+interfaces that are publicly routable or unroutable. (Unless someone
+gives us a command line option to force a bind.)
