@@ -15,7 +15,7 @@
 package main
 
 import (
-	"../safedoozer"
+	"github.com/xb95/singularity/safedoozer"
 	"code.google.com/p/gozmq/zmq"
 	"flag"
 	"fmt"
