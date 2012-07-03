@@ -104,59 +104,98 @@ func main() {
 
 	go maintainLock(lock, nrev)
 	go maintainInfo(&myinfo)
-	runClient() // Returns when dead.
+	runAgent() // Returns when dead.
 }
 
-func runClient() {
-	// TODO: Given the nature of ZeroMQ's REQ-REP socket pairs, we can only
-	// currently handle one outstanding request at a time. The rest will queue
-	// up until we get to them. We could do some fancy work by having several
-	// REP sockets created and put them in goroutines if we need to address
-	// that. I haven't yet, because ultimately I want the agent to be very
-	// lightweight. If we are taking substantial CPU (many concurrent requests)
-	// then there is probably something inherently broken in what we're doing.
-	//
-	// Actually, we do want to support multiple simultaneous queries so that
-	// people can write subsystems that do interesting things.
-	//
-	sock, err := zmq_ctx.NewSocket(zmq.REP)
+// runAgent sets up a simple ZMQ device that reads requests from people who
+// connect to us, passes them to some in-process worker goroutines, and
+// then spits back out the responses.
+func runAgent() {
+	frontend, err := zmq_ctx.NewSocket(zmq.ROUTER)
 	if err != nil {
-		fatal("failed to make zmq socket: %s", err)
+		fatal("failed to make zmq frontend: %s", err)
 	}
-	defer sock.Close()
+	defer frontend.Close()
 
-	err = sock.Bind("tcp://*:7330")
+	err = frontend.Bind("tcp://*:7330")
 	if err != nil {
-		fatal("failed to bind zmq socket: %s", err)
+		fatal("failed to bind zmq frontend: %s", err)
 	}
 
+	backend, err := zmq_ctx.NewSocket(zmq.DEALER)
+	if err != nil {
+		fatal("failed to make zmq backend: %s", err)
+	}
+	defer backend.Close()
+
+	err = backend.Bind("ipc://agent.ipc")
+	if err != nil {
+		fatal("failed to bind zmq frontend: %s", err)
+	}
+
+	// Now spawn some goroutine workers to handle requests.
+	// BUG(mark): We should make this detect when all workers are busy and then
+	// spawn new ones? Automatically adjust for load? Or make it command line
+	// configurable?
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			sock, err := zmq_ctx.NewSocket(zmq.REP)
+			if err != nil {
+				fatal("failed to make zmq worker: %s", err)
+			}
+			defer sock.Close()
+
+			err = sock.Connect("ipc://agent.ipc")
+			if err != nil {
+				fatal("failed to connect zmq worker: %s", err)
+			}
+
+			runAgentWorker(id, sock)
+		}(i)
+	}
+
+	// This won't return.
+	err = zmq.Device(zmq.QUEUE, frontend, backend)
+	if err != nil {
+		fatal("failed to create zmq device: %s", err)
+	}
+}
+
+func runAgentWorker(id int, sock zmq.Socket) {
+	send := func(val string) {
+		debug("(worker %d) sending: %s", id, val)
+		sock.Send([]byte(val), 0)
+	}
+
+	info("(worker %d) starting", id)
 	for {
 		data, err := sock.Recv(0)
 		if err != nil {
 			// Don't consider errors fatal, since it's probably just somebody
 			// sending us junk data.
-			warn("error reading from zmq socket: %s", err)
+			warn("(worker %d) error reading from zmq socket: %s", id, err)
 			continue
 		}
+		debug("(worker %d) received: %s", id, string(data))
 
 		parsed := strings.SplitN(strings.TrimSpace(string(data)), " ", 2)
 		if len(parsed) < 1 {
-			sock.Send([]byte("no command given"), 0)
+			send("no command given")
 			continue
 		}
 
 		switch parsed[0] {
 		case "exec":
 			if len(parsed) < 2 {
-				sock.Send([]byte("exec requires an argument"), 0)
+				send("exec requires an argument")
 			} else {
-				sock.Send(handleClientExec(parsed[1]), 0)
+				send(string(handleClientExec(parsed[1])))
 			}
 		case "die":
-			sock.Send([]byte("dying"), 0)
+			send("dying")
 			fatal("somebody requested we die, good-bye cruel world!")
 		default:
-			sock.Send([]byte(fmt.Sprintf("unknown command: %s", parsed[0])), 0)
+			send(fmt.Sprintf("unknown command: %s", parsed[0]))
 		}
 	}
 }
