@@ -90,13 +90,18 @@ func main() {
 	go func() {
 		for {
 			select {
-				case host := <-hostDone:
-					hostsOutstanding[host] = false
+			case host := <-hostDone:
+				hostsOutstanding[host] = false
 			}
 		}
 	}()
 	hostsStatus := make(chan []string)
 	go func() {
+		// BUG(mark): This organization is actually kind of bad, since it means
+		// we write out the current list and don't update it until someone polls.
+		// This means that when someone asks for the status, they get the old
+		// one from the instant the last person asked. This makes everything off
+		// by one, basically. Annoying.
 		for {
 			var hosts []string
 			for host, outstanding := range hostsOutstanding {
@@ -107,6 +112,9 @@ func main() {
 			hostsStatus <- hosts
 		}
 	}()
+	for _, host := range hosts {
+		hostsOutstanding[host] = true
+	}
 
 	switch args[0] {
 	case "exec":
@@ -140,16 +148,18 @@ func doWait(waiter *sync.WaitGroup, status chan []string) {
 		done <- true
 	}()
 
-	nextStatus := time.Now().Add(time.Duration(10 * time.Second))
+	nextStatus := time.Now().Add(10 * time.Second)
 	for {
 		select {
 		case <-done:
 			return
+		default:
+			// Do nothing.
 		}
 
 		time.Sleep(1 * time.Second)
 		if time.Now().After(nextStatus) {
-			nextStatus = time.Now().Add(time.Duration(10 * time.Second))
+			nextStatus = time.Now().Add(10 * time.Second)
 			info("waiting for: %s", strings.Join(<-status, " "))
 		}
 	}
