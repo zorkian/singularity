@@ -164,7 +164,13 @@ func runAgent() {
 func runAgentWorker(id int, sock zmq.Socket) {
 	send := func(val string) {
 		debug("(worker %d) sending: %s", id, val)
-		sock.Send([]byte(val), 0)
+		err := sock.Send([]byte(val), 0)
+		if err != nil {
+			// BUG(mark): Handle error values. I'm uncertain what exactly an
+			// error means here. Can we continue to use this socket, or do we
+			// need to throw it away and make a new one?
+			warn("(worker %d) error on send: %s", id, err)
+		}
 	}
 
 	info("(worker %d) starting", id)
@@ -173,6 +179,8 @@ func runAgentWorker(id int, sock zmq.Socket) {
 		if err != nil {
 			// Don't consider errors fatal, since it's probably just somebody
 			// sending us junk data.
+			// BUG(mark): Is that assertion valid? What if the socket has gone
+			// wobbly and something is terrible?
 			warn("(worker %d) error reading from zmq socket: %s", id, err)
 			continue
 		}

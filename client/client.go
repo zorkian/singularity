@@ -82,25 +82,77 @@ func main() {
 		fatal("no commands given")
 	}
 
+	// General purpose "hosts that still need to do X" logic, some commands
+	// will use this and some won't care.
+	hostsOutstanding := make(map[string]bool)
+	waiter := &sync.WaitGroup{}
+	hostDone := make(chan string)
+	go func() {
+		for {
+			select {
+				case host := <-hostDone:
+					hostsOutstanding[host] = false
+			}
+		}
+	}()
+	hostsStatus := make(chan []string)
+	go func() {
+		for {
+			var hosts []string
+			for host, outstanding := range hostsOutstanding {
+				if outstanding {
+					hosts = append(hosts, host)
+				}
+			}
+			hostsStatus <- hosts
+		}
+	}()
+
 	switch args[0] {
 	case "exec":
 		if len(args) != 2 {
 			fatal("exec requires exactly one argument")
 		}
-		waiter := &sync.WaitGroup{}
+
+		// BUG(mark): It would be nice to abstract this functionality out
+		// to some new level so we don't have to repeat it every command.
 		for _, host := range hosts {
 			waiter.Add(1)
 			go func(host string) {
 				doCommand(host, args[1])
+				hostDone <- host
 				waiter.Done()
 			}(host)
 		}
-		waiter.Wait()
 	default:
 		fatal("unknown command")
 	}
 
+	doWait(waiter, hostsStatus)
 	os.Exit(0)
+}
+
+func doWait(waiter *sync.WaitGroup, status chan []string) {
+	done := make(chan bool)
+
+	go func() {
+		waiter.Wait()
+		done <- true
+	}()
+
+	nextStatus := time.Now().Add(time.Duration(10 * time.Second))
+	for {
+		select {
+		case <-done:
+			return
+		}
+
+		time.Sleep(1 * time.Second)
+		if time.Now().After(nextStatus) {
+			nextStatus = time.Now().Add(time.Duration(10 * time.Second))
+			info("waiting for: %s", strings.Join(<-status, " "))
+		}
+	}
 }
 
 func doCommand(host, command string) {
