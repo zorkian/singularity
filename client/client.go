@@ -12,8 +12,8 @@ import (
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
-	"github.com/xb95/singularity/safedoozer"
-	"log"
+	"../safedoozer"
+	logging "github.com/fluffle/golog/logging"
 	"os"
 	"strings"
 	"sync"
@@ -26,7 +26,7 @@ type WaitChan chan int
 
 var zmq_ctx zmq.Context
 var dzr *safedoozer.Conn
-var chatter = 1 // 0 = quiet, 1 = normal, 2 = verbose
+var log logging.Logger
 
 func main() {
 	var host = flag.String("H", "", "host (or hosts) to act on")
@@ -34,17 +34,12 @@ func main() {
 	var all = flag.Bool("A", false, "act globally")
 	var dzrhost = flag.String("doozer", "localhost:8046",
 		"host:port for doozer")
-	var quiet = flag.Bool("q", false, "be quiet")
-	var verbose = flag.Bool("v", false, "be verbose")
 	flag.Parse()
 
-	args := flag.Args()
-
-	if *verbose {
-		chatter = 2
-	} else if *quiet {
-		chatter = 0
-	}
+	// Uses the nice golog package to handle logging arguments and flags
+	// so we don't have to worry about it.
+	log = logging.NewFromFlags()
+	safedoozer.SetLogger(log)
 
 	dzr = safedoozer.Dial(*dzrhost)
 	defer dzr.Close()
@@ -52,7 +47,7 @@ func main() {
 	var err error // If we use := below, we shadow the global, which is bad.
 	zmq_ctx, err = zmq.NewContext()
 	if err != nil {
-		fatal("failed to init zmq: %s", err)
+		log.Fatal("failed to init zmq: %s", err)
 	}
 	defer zmq_ctx.Close()
 
@@ -78,8 +73,9 @@ func main() {
 		// BUG(mark): Now convert roles back to additional hosts.
 	}
 
+	args := flag.Args()
 	if len(args) < 1 {
-		fatal("no commands given")
+		log.Fatal("no commands given")
 	}
 
 	// General purpose "hosts that still need to do X" logic, some commands
@@ -120,7 +116,7 @@ func main() {
 	switch args[0] {
 	case "exec":
 		if len(args) != 2 {
-			fatal("exec requires exactly one argument")
+			log.Fatal("exec requires exactly one argument")
 		}
 
 		// BUG(mark): It would be nice to abstract this functionality out
@@ -134,7 +130,7 @@ func main() {
 			}(host)
 		}
 	default:
-		fatal("unknown command")
+		log.Fatal("unknown command")
 	}
 
 	doWait(waiter, hostsStatus)
@@ -162,17 +158,17 @@ func doWait(waiter *sync.WaitGroup, status chan []string) {
 		if time.Now().After(nextStatus) {
 			status <- nil // Request a status update
 			nextStatus = time.Now().Add(10 * time.Second)
-			info("waiting for: %s", strings.Join(<-status, " "))
+			log.Info("waiting for: %s", strings.Join(<-status, " "))
 		}
 	}
 }
 
 func doCommand(host, command string) {
-	info("[%s] executing: %s", host, command)
+	log.Info("[%s] executing: %s", host, command)
 
 	sock := socketForHost(host)
 	if sock == nil {
-		warn("[%s] no socket available, skipping", host)
+		log.Warn("[%s] no socket available, skipping", host)
 		return
 	}
 
@@ -180,7 +176,7 @@ func doCommand(host, command string) {
 	sock.Send([]byte(fmt.Sprintf("exec %s", command)), 0)
 	resp, err := sock.Recv(0)
 	if err != nil {
-		warn("[%s] failed: %s", host, err)
+		log.Warn("[%s] failed: %s", host, err)
 		return
 	}
 	duration := time.Now().Sub(start)
@@ -199,9 +195,9 @@ func doCommand(host, command string) {
 		if idx > endpt {
 			break
 		}
-		warn("[%s] %s", host, line)
+		log.Warn("[%s] %s", host, line)
 	}
-	info("[%s] finished in %s", host, duration)
+	log.Info("[%s] finished in %s", host, duration)
 }
 
 func nodes() []string {
@@ -219,36 +215,14 @@ func socketForHost(host string) zmq.Socket {
 
 	sock, err := zmq_ctx.NewSocket(zmq.REQ)
 	if err != nil {
-		fatal("failed to create zmq socket: %s", err)
+		log.Fatal("failed to create zmq socket: %s", err)
 	}
 
 	// BUG(mark): ask zmq where a broker is and talk to them.
 	err = sock.Connect(fmt.Sprintf("tcp://%s:7330", ip))
 	if err != nil {
-		fatal("failed to connect to agent: %s", err)
+		log.Fatal("failed to connect to agent: %s", err)
 	}
 
 	return sock
-}
-
-func _log(minlvl int, fmt string, args ...interface{}) {
-	if chatter >= minlvl {
-		log.Printf(fmt, args...)
-	}
-}
-
-func debug(fmt string, args ...interface{}) {
-	_log(2, fmt, args...)
-}
-
-func info(fmt string, args ...interface{}) {
-	_log(1, fmt, args...)
-}
-
-func warn(fmt string, args ...interface{}) {
-	_log(0, fmt, args...)
-}
-
-func fatal(fmt string, args ...interface{}) {
-	log.Fatalf(fmt, args...)
 }

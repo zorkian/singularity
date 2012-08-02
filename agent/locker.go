@@ -31,6 +31,7 @@ var localLockChannel LockRequestChannel = make(LockRequestChannel)
 func init() {
 	// The main worker. This reads requests to manage our lock structure. Note
 	// that this only runs in ONE PLACE. It's a single anonymous goroutine.
+	// This one is for LOCAL LOCKS.
 	go func() {
 		for {
 			req := <-localLockChannel
@@ -56,6 +57,9 @@ func init() {
 			}
 		}
 	}()
+
+	// Same as above, but this one is for GLOBAL locks. We have to coordinate
+	// with the doozer system to handle this.
 }
 
 // tryLocalLock attempts to get a local lock. If the lock is already held by

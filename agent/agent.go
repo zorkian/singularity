@@ -20,7 +20,7 @@ import (
 	zmq "github.com/alecthomas/gozmq"
 	"../safedoozer"
 //	"github.com/xb95/singularity/safedoozer"
-	"log"
+	logging "github.com/fluffle/golog/logging"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -32,23 +32,20 @@ type InfoMap map[string]string
 
 var zmq_ctx zmq.Context
 var dzr *safedoozer.Conn
-var chatter = 1 // 0 = quiet, 1 = normal, 2 = verbose
+var log logging.Logger
 
 func main() {
 	var myhost = flag.String("hostname", "", "this machine's hostname")
 	var dzrhost = flag.String("doozer", "localhost:8046",
 		"host:port for doozer")
-	var quiet = flag.Bool("q", false, "be quiet")
-	var verbose = flag.Bool("v", false, "be verbose")
 	flag.Parse()
 
-	if *verbose {
-		chatter = 2
-	} else if *quiet {
-		chatter = 0
-	}
+	// Uses the nice golog package to handle logging arguments and flags
+	// so we don't have to worry about it.
+	log = logging.NewFromFlags()
+	safedoozer.SetLogger(log)
 
-	info("starting up")
+	log.Info("starting up")
 	rand.Seed(int64(time.Now().Nanosecond())) // Not the best but ok?
 
 	dzr = safedoozer.Dial(*dzrhost)
@@ -57,25 +54,25 @@ func main() {
 	var err error // If we use := below, we shadow the global, which is bad.
 	zmq_ctx, err = zmq.NewContext()
 	if err != nil {
-		fatal("failed to init zmq: %s", err)
+		log.Fatal("failed to init zmq: %s", err)
 	}
 	defer zmq_ctx.Close()
 
 	myinfo, err := getSelfInfo()
 	if err != nil {
-		fatal("Failed getting local information: %s", err)
+		log.Fatal("Failed getting local information: %s", err)
 	}
 	if *myhost == "" {
 		_, ok := myinfo["hostname"]
 		if !ok {
-			fatal("getSelfInfo() did not return a hostname")
+			log.Fatal("getSelfInfo() did not return a hostname")
 		}
 		*myhost = myinfo["hostname"]
 	} else {
-		warn("user requested hostname override (command line argument)")
+		log.Warn("user requested hostname override (command line argument)")
 		myinfo["hostname"] = *myhost
 	}
-	info("client starting with hostname %s", myinfo["hostname"])
+	log.Info("client starting with hostname %s", myinfo["hostname"])
 
 	// Now we have enough information to see if anybody else is claiming to be
 	// this particular node. If so, we want to wait a bit and see if they
@@ -87,21 +84,21 @@ func main() {
 	// If the lock is claimed, attempt to wait and see if the remote seems
 	// to still be alive.
 	if rev > 0 {
-		warn("node lock is claimed, waiting to see if it's lively")
+		log.Warn("node lock is claimed, waiting to see if it's lively")
 		time.Sleep(3 * time.Second)
 
 		nrev := dzr.Stat(lock, nil)
 		if nrev > rev {
-			fatal("lock is lively, we can't continue!")
+			log.Fatal("lock is lively, we can't continue!")
 		}
 	}
 
-	info("attempting to get the node lock")
+	log.Info("attempting to get the node lock")
 	nrev := dzr.Set(lock, rev, fmt.Sprintf("%d", time.Now().Unix()))
 	if nrev <= rev {
-		fatal("failed to obtain the lock")
+		log.Fatal("failed to obtain the lock")
 	}
-	info("lock successfully obtained! we are lively.")
+	log.Info("lock successfully obtained! we are lively.")
 
 	go maintainLock(lock, nrev)
 	go maintainInfo(&myinfo)
@@ -114,27 +111,26 @@ func main() {
 func runAgent() {
 	frontend, err := zmq_ctx.NewSocket(zmq.ROUTER)
 	if err != nil {
-		fatal("failed to make zmq frontend: %s", err)
+		log.Fatal("failed to make zmq frontend: %s", err)
 	}
 	defer frontend.Close()
 
 	err = frontend.Bind("tcp://*:7330")
 	if err != nil {
-		fatal("failed to bind zmq frontend: %s", err)
+		log.Fatal("failed to bind zmq frontend: %s", err)
 	}
 
 	backend, err := zmq_ctx.NewSocket(zmq.DEALER)
 	if err != nil {
-		fatal("failed to make zmq backend: %s", err)
+		log.Fatal("failed to make zmq backend: %s", err)
 	}
 	defer backend.Close()
 
 	err = backend.Bind("ipc://agent.ipc")
 	if err != nil {
-		fatal("failed to bind zmq frontend: %s", err)
+		log.Fatal("failed to bind zmq frontend: %s", err)
 	}
 
-	// Now spawn some goroutine workers to handle requests.
 	// BUG(mark): We should make this detect when all workers are busy and then
 	// spawn new ones? Automatically adjust for load? Or make it command line
 	// configurable?
@@ -142,13 +138,13 @@ func runAgent() {
 		go func(id int) {
 			sock, err := zmq_ctx.NewSocket(zmq.REP)
 			if err != nil {
-				fatal("failed to make zmq worker: %s", err)
+				log.Fatal("failed to make zmq worker: %s", err)
 			}
 			defer sock.Close()
 
 			err = sock.Connect("ipc://agent.ipc")
 			if err != nil {
-				fatal("failed to connect zmq worker: %s", err)
+				log.Fatal("failed to connect zmq worker: %s", err)
 			}
 
 			runAgentWorker(id, sock)
@@ -158,23 +154,23 @@ func runAgent() {
 	// This won't return.
 	err = zmq.Device(zmq.QUEUE, frontend, backend)
 	if err != nil {
-		fatal("failed to create zmq device: %s", err)
+		log.Fatal("failed to create zmq device: %s", err)
 	}
 }
 
 func runAgentWorker(id int, sock zmq.Socket) {
 	send := func(val string) {
-		debug("(worker %d) sending: %s", id, val)
+		log.Debug("(worker %d) sending: %s", id, val)
 		err := sock.Send([]byte(val), 0)
 		if err != nil {
 			// BUG(mark): Handle error values. I'm uncertain what exactly an
 			// error means here. Can we continue to use this socket, or do we
 			// need to throw it away and make a new one?
-			warn("(worker %d) error on send: %s", id, err)
+			log.Warn("(worker %d) error on send: %s", id, err)
 		}
 	}
 
-	info("(worker %d) starting", id)
+	log.Info("(worker %d) starting", id)
 	for {
 		data, err := sock.Recv(0)
 		if err != nil {
@@ -182,10 +178,10 @@ func runAgentWorker(id int, sock zmq.Socket) {
 			// sending us junk data.
 			// BUG(mark): Is that assertion valid? What if the socket has gone
 			// wobbly and something is terrible?
-			warn("(worker %d) error reading from zmq socket: %s", id, err)
+			log.Warn("(worker %d) error reading from zmq socket: %s", id, err)
 			continue
 		}
-		debug("(worker %d) received: %s", id, string(data))
+		log.Debug("(worker %d) received: %s", id, string(data))
 
 		parsed := strings.SplitN(strings.TrimSpace(string(data)), " ", 2)
 		if len(parsed) < 1 {
@@ -224,7 +220,7 @@ func runAgentWorker(id int, sock zmq.Socket) {
 			}
 		case "die":
 			send("dying")
-			fatal("somebody requested we die, good-bye cruel world!")
+			log.Fatal("somebody requested we die, good-bye cruel world!")
 		default:
 			send(fmt.Sprintf("unknown command: %s", parsed[0]))
 		}
@@ -254,7 +250,7 @@ func maintainLock(lock string, curRev int64) {
 		nnrev, err := dzr.Conn.Set(lock, curRev,
 			[]byte(fmt.Sprintf("%d", time.Now().Unix())))
 		if err != nil || nnrev <= curRev {
-			fatal("failed to maintain lock, good-bye cruel world!")
+			log.Fatal("failed to maintain lock, good-bye cruel world!")
 		}
 		curRev = nnrev
 
@@ -276,13 +272,13 @@ func maintainInfo(info *InfoMap) {
 	for {
 		newmyinfo, err := getSelfInfo()
 		if err != nil {
-			fatal("failed updating info: %s", err)
+			log.Fatal("failed updating info: %s", err)
 		}
 
 		// Hostname change check, as noted above.
 		newhostname, ok := newmyinfo["hostname"]
 		if newhostname != hostname || !ok {
-			fatal("hostname changed mid-flight!")
+			log.Fatal("hostname changed mid-flight!")
 		}
 
 		// We can get the current repository revision because we are asserting
@@ -290,7 +286,7 @@ func maintainInfo(info *InfoMap) {
 		// each key at most once. That way we don't have to track further revs.
 		rev, err := dzr.Rev()
 		if err != nil {
-			fatal("failed fetching current revision: %s", err)
+			log.Fatal("failed fetching current revision: %s", err)
 		}
 
 		// Delete keys that have vanished from Old to New.
@@ -300,7 +296,7 @@ func maintainInfo(info *InfoMap) {
 			if !ok {
 				err := dzr.Del(keypath, rev)
 				if err != nil {
-					fatal("failed to delete %s: %s", keypath, err)
+					log.Fatal("failed to delete %s: %s", keypath, err)
 				}
 				delete(*info, key)
 			}
@@ -312,7 +308,7 @@ func maintainInfo(info *InfoMap) {
 			keypath := fmt.Sprintf("%s/%s", path, key)
 			_, err := dzr.Conn.Set(keypath, rev, []byte(newmyinfo[key]))
 			if err != nil {
-				fatal("failed to set %s: %s", keypath, err)
+				log.Fatal("failed to set %s: %s", keypath, err)
 			}
 			(*info)[key] = newmyinfo[key]
 		}
@@ -338,7 +334,7 @@ func getSelfInfo() (InfoMap, error) {
 	cmd := exec.Command("facter")
 	output, err := cmd.Output()
 	if err != nil {
-		fatal("failed to run facter: %s", err)
+		log.Fatal("failed to run facter: %s", err)
 	}
 
 	facts := strings.Split(string(output), "\n")
@@ -352,26 +348,4 @@ func getSelfInfo() (InfoMap, error) {
 			strings.TrimSpace(fact[1])
 	}
 	return myinfo, nil
-}
-
-func _log(minlvl int, fmt string, args ...interface{}) {
-	if chatter >= minlvl {
-		log.Printf(fmt, args...)
-	}
-}
-
-func debug(fmt string, args ...interface{}) {
-	_log(2, fmt, args...)
-}
-
-func info(fmt string, args ...interface{}) {
-	_log(1, fmt, args...)
-}
-
-func warn(fmt string, args ...interface{}) {
-	_log(0, fmt, args...)
-}
-
-func fatal(fmt string, args ...interface{}) {
-	log.Fatalf(fmt, args...)
 }
