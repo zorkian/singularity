@@ -25,13 +25,16 @@ type EmptyFunc func()
 type WaitChan chan int
 
 var zmq_ctx zmq.Context
+var psock zmq.Socket
 var dzr *safedoozer.Conn
 var log logging.Logger
 
 func main() {
 	var host = flag.String("H", "", "host (or hosts) to act on")
 	var role = flag.String("R", "", "role (or roles) to act on")
+	var proxy = flag.String("P", "127.0.0.1", "agent to interact with")
 	var all = flag.Bool("A", false, "act globally")
+	var glock = flag.String("G", "", "global lock to claim")
 	var dzrhost = flag.String("doozer", "localhost:8046",
 		"host:port for doozer")
 	flag.Parse()
@@ -51,6 +54,16 @@ func main() {
 	}
 	defer zmq_ctx.Close()
 
+	// Connect to the proxy agent. This is the agent we will be having do all
+	// of the work for us. This is probably localhost.
+	psock = socketForIp(*proxy)
+	if psock == nil {
+		log.Error("unable to connect to proxy agent")
+		os.Exit(1)
+	}
+	defer psock.Close()
+
+	// Determine which nodes we will be addressing.
 	var hosts []string
 	if *all {
 		hosts = nodes()
@@ -71,11 +84,6 @@ func main() {
 		}
 
 		// BUG(mark): Now convert roles back to additional hosts.
-	}
-
-	args := flag.Args()
-	if len(args) < 1 {
-		log.Fatal("no commands given")
 	}
 
 	// General purpose "hosts that still need to do X" logic, some commands
@@ -113,10 +121,27 @@ func main() {
 		hostsOutstanding[host] = true
 	}
 
+	// If we have been told to get a global lock, let's try to get that now.
+	if *glock != "" {
+		resp := proxyCommand(fmt.Sprintf("global_lock %s", *glock))
+		if resp != "locked" {
+			log.Error("failed to get global lock %s: %s", *glock, resp)
+			os.Exit(1)
+		}
+	}
+
+	// Now finally, argument processing.
+	args := flag.Args()
+	if len(args) < 1 {
+		log.Error("no commands given")
+		os.Exit(1)
+	}
+
 	switch args[0] {
 	case "exec":
 		if len(args) != 2 {
-			log.Fatal("exec requires exactly one argument")
+			log.Error("exec requires exactly one argument")
+			os.Exit(1)
 		}
 
 		// BUG(mark): It would be nice to abstract this functionality out
@@ -130,10 +155,20 @@ func main() {
 			}(host)
 		}
 	default:
-		log.Fatal("unknown command")
+		log.Error("unknown command")
+		os.Exit(1)
+	}
+	doWait(waiter, hostsStatus)
+
+	// Unlock the lock we had.
+	if *glock != "" {
+		resp := proxyCommand(fmt.Sprintf("global_unlock %s", *glock))
+		if resp != "unlocked" {
+			log.Error("failed to release global lock %s: %s", *glock, resp)
+			os.Exit(1)
+		}
 	}
 
-	doWait(waiter, hostsStatus)
 	os.Exit(0)
 }
 
@@ -171,6 +206,7 @@ func doCommand(host, command string) {
 		log.Warn("[%s] no socket available, skipping", host)
 		return
 	}
+	defer sock.Close()
 
 	start := time.Now()
 	sock.Send([]byte(fmt.Sprintf("exec %s", command)), 0)
@@ -195,9 +231,21 @@ func doCommand(host, command string) {
 		if idx > endpt {
 			break
 		}
-		log.Warn("[%s] %s", host, line)
+		fmt.Printf("[%s] %s\n", host, line)
 	}
 	log.Info("[%s] finished in %s", host, duration)
+}
+
+func proxyCommand(cmd string) string {
+	log.Debug("proxy command: %s", cmd)
+	psock.Send([]byte(cmd), 0)
+	resp, err := psock.Recv(0)
+	if err != nil {
+		log.Error("failed to read from proxy agent: %s", err)
+		os.Exit(1)
+	}
+	log.Debug("proxy response: %s", resp)
+	return string(resp)
 }
 
 func nodes() []string {
@@ -212,7 +260,10 @@ func socketForHost(host string) zmq.Socket {
 	if ip == "" {
 		return nil
 	}
+	return socketForIp(ip)
+}
 
+func socketForIp(ip string) zmq.Socket {
 	sock, err := zmq_ctx.NewSocket(zmq.REQ)
 	if err != nil {
 		log.Fatal("failed to create zmq socket: %s", err)
@@ -221,8 +272,8 @@ func socketForHost(host string) zmq.Socket {
 	// BUG(mark): ask zmq where a broker is and talk to them.
 	err = sock.Connect(fmt.Sprintf("tcp://%s:7330", ip))
 	if err != nil {
-		log.Fatal("failed to connect to agent: %s", err)
+		log.Error("failed to connect to agent: %s", err)
+		os.Exit(1)
 	}
-
 	return sock
 }
