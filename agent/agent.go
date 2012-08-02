@@ -15,11 +15,13 @@
 package main
 
 import (
+	"../safedoozer"
+	crand "crypto/rand"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
-	"../safedoozer"
-//	"github.com/xb95/singularity/safedoozer"
+	"io"
+	//	"github.com/xb95/singularity/safedoozer"
 	logging "github.com/fluffle/golog/logging"
 	"math/rand"
 	"os"
@@ -33,6 +35,14 @@ type InfoMap map[string]string
 var zmq_ctx zmq.Context
 var dzr *safedoozer.Conn
 var log logging.Logger
+var gid string
+
+func init() {
+	// Create our new unique id
+	buf := make([]byte, 16)
+	io.ReadFull(crand.Reader, buf)
+	gid = fmt.Sprintf("%x", buf)
+}
 
 func main() {
 	var myhost = flag.String("hostname", "", "this machine's hostname")
@@ -45,11 +55,12 @@ func main() {
 	log = logging.NewFromFlags()
 	safedoozer.SetLogger(log)
 
-	log.Info("starting up")
+	log.Info("starting up - gid %s", gid)
 	rand.Seed(int64(time.Now().Nanosecond())) // Not the best but ok?
 
 	dzr = safedoozer.Dial(*dzrhost)
 	defer dzr.Close()
+	defer removeGlobalLocks()
 
 	var err error // If we use := below, we shadow the global, which is bad.
 	zmq_ctx, err = zmq.NewContext()
@@ -202,7 +213,7 @@ func runAgentWorker(id int, sock zmq.Socket) {
 			if len(parsed) < 2 {
 				send("local_lock requires an argument")
 			} else {
-				if (tryLocalLock(parsed[1])) {
+				if tryLocalLock(parsed[1]) {
 					send("locked")
 				} else {
 					send("failed")
@@ -212,7 +223,7 @@ func runAgentWorker(id int, sock zmq.Socket) {
 			if len(parsed) < 2 {
 				send("local_unlock requires an argument")
 			} else {
-				if (localUnlock(parsed[1])) {
+				if localUnlock(parsed[1]) {
 					send("unlocked")
 				} else {
 					send("not locked")

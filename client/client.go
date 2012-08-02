@@ -9,10 +9,10 @@
 package main
 
 import (
+	"../safedoozer"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
-	"../safedoozer"
 	logging "github.com/fluffle/golog/logging"
 	"os"
 	"strings"

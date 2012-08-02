@@ -9,11 +9,11 @@
 package safedoozer
 
 import (
-	"github.com/ha/doozer"
 	logging "github.com/fluffle/golog/logging"
+	"github.com/ha/doozer"
 )
 
-type Conn struct{
+type Conn struct {
 	Address string
 	doozer.Conn
 }
