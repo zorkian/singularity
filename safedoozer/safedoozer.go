@@ -13,14 +13,17 @@ import (
 	"log"
 )
 
-type Conn struct{ doozer.Conn }
+type Conn struct{
+	Address string
+	doozer.Conn
+}
 
 func Dial(addr string) *Conn {
 	dzr, err := doozer.Dial(addr)
 	if err != nil {
 		log.Fatalf("failed to connect to %s: %s", addr, err)
 	}
-	return &Conn{*dzr}
+	return &Conn{Conn: *dzr, Address: addr}
 }
 
 func (dzr *Conn) Stat(file string, rev *int64) int64 {

@@ -18,7 +18,8 @@ import (
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
-	"github.com/xb95/singularity/safedoozer"
+	"../safedoozer"
+//	"github.com/xb95/singularity/safedoozer"
 	"log"
 	"math/rand"
 	"os"
@@ -198,6 +199,28 @@ func runAgentWorker(id int, sock zmq.Socket) {
 				send("exec requires an argument")
 			} else {
 				send(string(handleClientExec(parsed[1])))
+			}
+		case "doozer":
+			send(dzr.Address)
+		case "local_lock":
+			if len(parsed) < 2 {
+				send("local_lock requires an argument")
+			} else {
+				if (tryLocalLock(parsed[1])) {
+					send("locked")
+				} else {
+					send("failed")
+				}
+			}
+		case "local_unlock":
+			if len(parsed) < 2 {
+				send("local_unlock requires an argument")
+			} else {
+				if (localUnlock(parsed[1])) {
+					send("unlocked")
+				} else {
+					send("not locked")
+				}
 			}
 		case "die":
 			send("dying")

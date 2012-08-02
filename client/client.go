@@ -103,6 +103,7 @@ func main() {
 		// one from the instant the last person asked. This makes everything off
 		// by one, basically. Annoying.
 		for {
+			_ = <-hostsStatus
 			var hosts []string
 			for host, outstanding := range hostsOutstanding {
 				if outstanding {
@@ -159,6 +160,7 @@ func doWait(waiter *sync.WaitGroup, status chan []string) {
 
 		time.Sleep(1 * time.Second)
 		if time.Now().After(nextStatus) {
+			status <- nil // Request a status update
 			nextStatus = time.Now().Add(10 * time.Second)
 			info("waiting for: %s", strings.Join(<-status, " "))
 		}
