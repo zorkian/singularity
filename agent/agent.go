@@ -26,6 +26,7 @@ import (
 	"math/rand"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -169,9 +170,15 @@ func runAgent() {
 	}
 
 	// This won't return.
-	err = zmq.Device(zmq.QUEUE, frontend, backend)
-	if err != nil {
-		log.Fatal("failed to create zmq device: %s", err)
+	for {
+		err = zmq.Device(zmq.QUEUE, frontend, backend)
+		if err != nil {
+			if err == syscall.EINTR {
+				log.Warn("device interrupted, resuming")
+				continue
+			}
+			log.Fatal("failed to create zmq device: %s", err)
+		}
 	}
 }
 
@@ -233,6 +240,26 @@ func runAgentWorker(id int, sock zmq.Socket) {
 					send("unlocked")
 				} else {
 					send("not locked")
+				}
+			}
+		case "global_lock":
+			if len(parsed) < 2 {
+				send("global_lock requires an argument")
+			} else {
+				if tryGlobalLock(parsed[1]) {
+					send("locked")
+				} else {
+					send("failed")
+				}
+			}
+		case "global_unlock":
+			if len(parsed) < 2 {
+				send("global_unlock requires an argument")
+			} else {
+				if globalUnlock(parsed[1]) {
+					send("unlocked")
+				} else {
+					send("failed")
 				}
 			}
 		case "die":
