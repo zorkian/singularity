@@ -16,8 +16,6 @@ import (
 	logging "github.com/fluffle/golog/logging"
 	"os"
 	"strings"
-	"sync"
-	"time"
 )
 
 // These are part of our generic wait framework.
@@ -37,12 +35,24 @@ func main() {
 	var glock = flag.String("G", "", "global lock to claim")
 	var dzrhost = flag.String("doozer", "localhost:8046",
 		"host:port for doozer")
+	var jobs = flag.Int("j", 0, "jobs to run in parallel")
 	flag.Parse()
 
 	// Uses the nice golog package to handle logging arguments and flags
 	// so we don't have to worry about it.
 	log = logging.NewFromFlags()
 	safedoozer.SetLogger(log)
+
+	// Do some simple argument validation.
+	args := flag.Args()
+	if len(args) < 1 {
+		log.Error("no commands given")
+		os.Exit(1)
+	}
+	if !isValidCommand(args[0]) {
+		log.Error("invalid command: %s", args[0])
+		os.Exit(1)
+	}
 
 	dzr = safedoozer.Dial(*dzrhost)
 	defer dzr.Close()
@@ -86,41 +96,6 @@ func main() {
 		// BUG(mark): Now convert roles back to additional hosts.
 	}
 
-	// General purpose "hosts that still need to do X" logic, some commands
-	// will use this and some won't care.
-	hostsOutstanding := make(map[string]bool)
-	waiter := &sync.WaitGroup{}
-	hostDone := make(chan string)
-	go func() {
-		for {
-			select {
-			case host := <-hostDone:
-				hostsOutstanding[host] = false
-			}
-		}
-	}()
-	hostsStatus := make(chan []string)
-	go func() {
-		// BUG(mark): This organization is actually kind of bad, since it means
-		// we write out the current list and don't update it until someone polls.
-		// This means that when someone asks for the status, they get the old
-		// one from the instant the last person asked. This makes everything off
-		// by one, basically. Annoying.
-		for {
-			_ = <-hostsStatus
-			var hosts []string
-			for host, outstanding := range hostsOutstanding {
-				if outstanding {
-					hosts = append(hosts, host)
-				}
-			}
-			hostsStatus <- hosts
-		}
-	}()
-	for _, host := range hosts {
-		hostsOutstanding[host] = true
-	}
-
 	// If we have been told to get a global lock, let's try to get that now.
 	if *glock != "" {
 		resp := proxyCommand(fmt.Sprintf("global_lock %s", *glock))
@@ -130,35 +105,11 @@ func main() {
 		}
 	}
 
-	// Now finally, argument processing.
-	args := flag.Args()
-	if len(args) < 1 {
-		log.Error("no commands given")
-		os.Exit(1)
+	// Queue up the jobs and then execute them.
+	for _, host := range hosts {
+		queueJob(host, args)
 	}
-
-	switch args[0] {
-	case "exec":
-		if len(args) != 2 {
-			log.Error("exec requires exactly one argument")
-			os.Exit(1)
-		}
-
-		// BUG(mark): It would be nice to abstract this functionality out
-		// to some new level so we don't have to repeat it every command.
-		for _, host := range hosts {
-			waiter.Add(1)
-			go func(host string) {
-				doCommand(host, args[1])
-				hostDone <- host
-				waiter.Done()
-			}(host)
-		}
-	default:
-		log.Error("unknown command")
-		os.Exit(1)
-	}
-	doWait(waiter, hostsStatus)
+	runJobs(*jobs) // Returns when jobs are done.
 
 	// Unlock the lock we had.
 	if *glock != "" {
@@ -170,70 +121,6 @@ func main() {
 	}
 
 	os.Exit(0)
-}
-
-func doWait(waiter *sync.WaitGroup, status chan []string) {
-	done := make(chan bool)
-
-	go func() {
-		waiter.Wait()
-		done <- true
-	}()
-
-	nextStatus := time.Now().Add(10 * time.Second)
-	for {
-		select {
-		case <-done:
-			return
-		default:
-			// Do nothing.
-		}
-
-		time.Sleep(1 * time.Second)
-		if time.Now().After(nextStatus) {
-			status <- nil // Request a status update
-			nextStatus = time.Now().Add(10 * time.Second)
-			log.Info("waiting for: %s", strings.Join(<-status, " "))
-		}
-	}
-}
-
-func doCommand(host, command string) {
-	log.Info("[%s] executing: %s", host, command)
-
-	sock := socketForHost(host)
-	if sock == nil {
-		log.Warn("[%s] no socket available, skipping", host)
-		return
-	}
-	defer sock.Close()
-
-	start := time.Now()
-	sock.Send([]byte(fmt.Sprintf("exec %s", command)), 0)
-	resp, err := sock.Recv(0)
-	if err != nil {
-		log.Warn("[%s] failed: %s", host, err)
-		return
-	}
-	duration := time.Now().Sub(start)
-
-	// Annoying way to remove a trailing empty line? Maybe there is a better
-	// way of doing this.
-	split := strings.Split(string(resp), "\n")
-	endpt := len(split) - 1
-	for i := endpt; i >= 0; i-- {
-		if split[i] != "" {
-			break
-		}
-		endpt--
-	}
-	for idx, line := range split {
-		if idx > endpt {
-			break
-		}
-		fmt.Printf("[%s] %s\n", host, line)
-	}
-	log.Info("[%s] finished in %s", host, duration)
 }
 
 func proxyCommand(cmd string) string {
