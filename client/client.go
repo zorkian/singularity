@@ -26,6 +26,7 @@ var zmq_ctx zmq.Context
 var psock zmq.Socket
 var dzr *safedoozer.Conn
 var log logging.Logger
+var timeout int64
 
 func main() {
 	var host = flag.String("H", "", "host (or hosts) to act on")
@@ -36,7 +37,10 @@ func main() {
 	var dzrhost = flag.String("doozer", "localhost:8046",
 		"host:port for doozer")
 	var jobs = flag.Int("j", 0, "jobs to run in parallel")
+	var tout = flag.Int64("t", 20, "timeout (in seconds) for jobs")
 	flag.Parse()
+
+	timeout = *tout
 
 	// Uses the nice golog package to handle logging arguments and flags
 	// so we don't have to worry about it.
@@ -66,7 +70,7 @@ func main() {
 
 	// Connect to the proxy agent. This is the agent we will be having do all
 	// of the work for us. This is probably localhost.
-	psock = socketForIp(*proxy)
+	psock = *socketForIp(*proxy)
 	if psock == nil {
 		log.Error("unable to connect to proxy agent")
 		os.Exit(1)
@@ -139,7 +143,7 @@ func nodes() []string {
 	return dzr.GetdirLatest("/s/lock")
 }
 
-func socketForHost(host string) zmq.Socket {
+func socketForHost(host string) *zmq.Socket {
 	// BUG(mark): We should be a little more fancy about how to get a socket to
 	// the machine we're trying to reach.
 
@@ -150,7 +154,7 @@ func socketForHost(host string) zmq.Socket {
 	return socketForIp(ip)
 }
 
-func socketForIp(ip string) zmq.Socket {
+func socketForIp(ip string) *zmq.Socket {
 	sock, err := zmq_ctx.NewSocket(zmq.REQ)
 	if err != nil {
 		log.Fatal("failed to create zmq socket: %s", err)
@@ -162,5 +166,5 @@ func socketForIp(ip string) zmq.Socket {
 		log.Error("failed to connect to agent: %s", err)
 		os.Exit(1)
 	}
-	return sock
+	return &sock
 }

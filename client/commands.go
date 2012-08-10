@@ -8,6 +8,7 @@ package main
 
 import (
 	"fmt"
+	zmq "github.com/alecthomas/gozmq"
 	"strings"
 	"time"
 )
@@ -35,11 +36,24 @@ func doCommand(host, command string) {
 		log.Warn("[%s] no socket available, skipping", host)
 		return
 	}
-	defer sock.Close()
+	defer (*sock).Close()
 
+	// Send our output. Interestingly, it seems that this never fails, even
+	// if the node is down. ZMQ always accepts the connect/write and just
+	// buffers it internally? Even though we're supposedly blocking...
 	start := time.Now()
-	sock.Send([]byte(fmt.Sprintf("exec %s", command)), 0)
-	resp, err := sock.Recv(0)
+	if !waitForSend(sock, 1) {
+		log.Error("host %s: socket never became writeable", host)
+		return
+	}
+	(*sock).Send([]byte(fmt.Sprintf("exec %s", command)), 0)
+
+	// Wait for this socket to have data, for up to a certain timeout.
+	if !waitForRecv(sock, timeout) {
+		log.Error("host %s: timeout receiving response", host)
+		return
+	}
+	resp, err := (*sock).Recv(0)
 	if err != nil {
 		log.Warn("[%s] failed: %s", host, err)
 		return
@@ -63,4 +77,26 @@ func doCommand(host, command string) {
 		fmt.Printf("[%s] %s\n", host, line)
 	}
 	log.Info("[%s] finished in %s", host, duration)
+}
+
+// BUG(mark): Move this to a general framework so we can use it in the agent.
+// Or just for the gozmq package and implement it there?
+func waitForRecv(sock *zmq.Socket, timeout int64) bool {
+	pi := make([]zmq.PollItem, 1)
+	pi[0] = zmq.PollItem{Socket: *sock, Events: zmq.POLLIN}
+	zmq.Poll(pi, timeout*1000000)
+	if pi[0].REvents == zmq.POLLIN {
+		return true
+	}
+	return false
+}
+
+func waitForSend(sock *zmq.Socket, timeout int64) bool {
+	pi := make([]zmq.PollItem, 1)
+	pi[0] = zmq.PollItem{Socket: *sock, Events: zmq.POLLOUT}
+	zmq.Poll(pi, timeout*1000000)
+	if pi[0].REvents == zmq.POLLOUT {
+		return true
+	}
+	return false
 }
