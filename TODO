@@ -1,5 +1,21 @@
 This is a todo file, huzzah.
 
+* FILE STORAGE
+
+In short, I want to be able to store and retrieve files across the cluster.
+This can be done as light backups (i.e., automatically store /etc from every
+machine?) but also for distribution and storage.
+
+This may best be done with a subsystem so it isn't welded to the core, but
+the core might want to do some of this. (I.e., some parts storing backups
+of their databases.)
+
+The ideal would also enable tracking changes over time, so you can revert
+things later if something went wrong. This might help you track downtime and
+problems by seeing that someone changed the configuration of something.
+
+Consistent hash?
+
 * BROKER SYSTEM?
 
 A very large component is brokers to enable us to talk to nodes without
