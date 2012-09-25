@@ -46,7 +46,9 @@ func popJob() *Job {
 func dumpStatus() {
 	jqlock.Lock()
 	defer jqlock.Unlock()
-
+	if len(jqueue) == 0 {
+		return // Nada, man.
+	}
 	strs := make([]string, len(jqueue))
 	for idx, job := range jqueue {
 		strs[idx] = job.Status()
