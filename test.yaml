@@ -1,0 +1,54 @@
+---
+# This is a YAML file that describes something that the Singularity system
+# is supposed to keep track of.
+#
+# The way to think about this is that you tell Singularity that you want
+# something to happen if certain conditions are met. It keeps track of the
+# conditions and then, if they are met, does something.
+
+# You can define templates which allow you to apply a set of parameters to
+# something else, later.
+run_on_apps:
+    is_template: true
+    scope: local
+    prereqs:
+        # Only run on nodes that have the 'app' role.
+        - node.role ~= app
+        - node.ram.free > 2G
+        #- lock.local foo
+        #- lock.global bar
+    params:
+        logs.keep: 10m
+
+# There are two main types of things -- jobs and triggers. A job is something
+# that is expected to be long running. Triggers are also programs, but they
+# should run quickly and perhaps frequently.
+zmq_node:
+    template: run_on_apps
+    params:
+        job.count: 5
+    binary: /usr/local/bin/prodwrap /usr/local/bin/zmq_node
+
+# There are also triggers. Commands that can be run when certain conditions
+# are met.
+send_alert:
+    trigger: SendAlert
+    binary: /usr/local/bin/send_alert $event $*
+
+# If you want to create things like "trigger when RAM is under 500MB free"
+# then you should probably use a plugin. In essence, a plugin is something
+# that the agent runs for you, and the plugin can send commands.
+check_ram:
+    is_plugin: true
+    binary: /usr/local/bin/sng_ram_check 500MB
+
+# The above plugin, for example, watches RAM usage. When certain thresholds are
+# hit, it sends commands like 'event LowRam' or something.
+#
+# Then you can do:
+roll_boats:
+    trigger: LowRam
+    params:
+        # Don't run more often than this.
+        cooldown: 15m
+    binary: /usr/local/bin/roll_the_boats.sh

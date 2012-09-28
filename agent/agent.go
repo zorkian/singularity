@@ -62,6 +62,9 @@ func main() {
 	defer dzr.Close()
 	defer removeGlobalLocks()
 
+	// see config.go for this
+	initializeConfig()
+
 	var err error // If we use := below, we shadow the global, which is bad.
 	zmq_ctx, err = zmq.NewContext()
 	if err != nil {
@@ -120,6 +123,7 @@ func main() {
 	dzr.Set(lock, rev, gid)
 
 	go maintainInfo(&myinfo)
+	go maintainStanzas()
 	runAgent() // Returns when dead.
 }
 
