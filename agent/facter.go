@@ -8,22 +8,22 @@
 package main
 
 import (
-   "fmt"
-   "math/rand"
-   "os"
-   "os/exec"
-   "strings"
-   "time"
+	"fmt"
+	"math/rand"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
 )
 
 func getSelfInfo() (InfoMap, error) {
 	myinfo := make(InfoMap)
 
-	hostname, err := os.Hostname()
+	lhostname, err := os.Hostname()
 	if err != nil {
 		return nil, err
 	}
-	myinfo["hostname"] = hostname
+	myinfo["hostname"] = lhostname
 
 	// For now, we are depending on facter to give us information about this
 	// system. I think that I like that? We should also investigate if Chef has
@@ -51,8 +51,8 @@ func maintainInfo(info *InfoMap) {
 	// We want to keep our original hostname. If it ever changes, we need to
 	// bail out. Right now we're locking on hostname, so that means somebody
 	// else might start up with the new name...
-	hostname := (*info)["hostname"]
-	path := "/s/node/" + hostname
+	lhostname := (*info)["hostname"]
+	path := "/s/node/" + lhostname
 
 	for {
 		newmyinfo, err := getSelfInfo()
@@ -62,7 +62,7 @@ func maintainInfo(info *InfoMap) {
 
 		// Hostname change check, as noted above.
 		newhostname, ok := newmyinfo["hostname"]
-		if newhostname != hostname || !ok {
+		if newhostname != lhostname || newhostname != hostname || !ok {
 			log.Fatal("hostname changed mid-flight!")
 		}
 

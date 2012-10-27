@@ -10,7 +10,7 @@ package safedoozer
 
 import (
 	logging "github.com/fluffle/golog/logging"
-	"github.com/ha/doozer"
+	"github.com/soundcloud/doozer"
 )
 
 type Conn struct {
@@ -48,6 +48,15 @@ func (dzr *Conn) Set(file string, oldRev int64, body string) int64 {
 	return newRev
 }
 
+func (dzr *Conn) SetLatest(file string, body string) int64 {
+	oldRev := dzr.Stat(file, nil)
+	newRev, err := dzr.Conn.Set(file, oldRev, []byte(body))
+	if err != nil {
+		log.Fatal("failed to set %s: %s", file, err)
+	}
+	return newRev
+}
+
 func (dzr *Conn) GetLatest(file string) string {
 	res, _, err := dzr.Conn.Get(file, nil)
 	if err != nil {
@@ -59,12 +68,12 @@ func (dzr *Conn) GetLatest(file string) string {
 func (dzr *Conn) GetdirLatest(file string) []string {
 	rev, err := dzr.Conn.Rev()
 	if err != nil {
-		log.Fatal("failed to get rev: %s", err)
+		log.Fatal("failed to get rev %s: %s", file, err)
 	}
 
 	dirs, err := dzr.Conn.Getdir(file, rev, 0, -1)
 	if err != nil {
-		log.Fatal("failed to getdir: %s", err)
+		log.Fatal("failed to getdir %s: %s", file, err)
 	}
 	return dirs
 }

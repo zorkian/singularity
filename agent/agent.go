@@ -35,7 +35,7 @@ type InfoMap map[string]string
 var zmq_ctx zmq.Context
 var dzr *safedoozer.Conn
 var log logging.Logger
-var gid string
+var gid, hostname string
 
 func init() {
 	// Create our new unique id
@@ -86,13 +86,18 @@ func main() {
 		log.Warn("user requested hostname override (command line argument)")
 		myinfo["hostname"] = *myhost
 	}
-	log.Info("client starting with hostname %s", myinfo["hostname"])
+
+	// Global, easy to access variable since we use it everywhere. This is safe
+	// because it's read-only, too -- well, by definition. It isn't really. But
+	// if it changes in maintainInfo then we exit.
+	hostname = myinfo["hostname"]
+	log.Info("client starting with hostname %s", hostname)
 
 	// Now we have enough information to see if anybody else is claiming to be
 	// this particular node. If so, we want to wait a bit and see if they
 	// update again. If they are updating, then it is assumed they are running
 	// okay, and we shouldn't start up again.
-	lock := "/s/lock/" + myinfo["hostname"]
+	lock := "/s/lock/" + hostname
 	rev := dzr.Stat(lock, nil)
 
 	// If the lock is claimed, attempt to wait and see if the remote seems
@@ -118,7 +123,7 @@ func main() {
 
 	// Now we want to reset the gid map, asserting that we are now the living
 	// agent for this host.
-	lock = "/s/gid/" + myinfo["hostname"]
+	lock = "/s/gid/" + hostname
 	rev = dzr.Stat(lock, nil)
 	dzr.Set(lock, rev, gid)
 
@@ -187,9 +192,9 @@ func runAgent() {
 }
 
 func runAgentWorker(id int, sock zmq.Socket) {
-	send := func(val string) {
+	send := func(val string, args ...interface{}) {
 		log.Debug("(worker %d) sending: %s", id, val)
-		err := sock.Send([]byte(val), 0)
+		err := sock.Send([]byte(fmt.Sprintf(val, args)), 0)
 		if err != nil {
 			// BUG(mark): Handle error values. I'm uncertain what exactly an
 			// error means here. Can we continue to use this socket, or do we
@@ -226,6 +231,14 @@ func runAgentWorker(id int, sock zmq.Socket) {
 			}
 		case "doozer":
 			send(dzr.Address)
+		case "add_role":
+			if len(parsed) < 2 {
+				send("add_role requires an argument")
+			} else {
+				role := strings.TrimSpace(parsed[1])
+				dzr.SetLatest(fmt.Sprintf("/s/role/%s/%s", role, hostname), "1")
+				send("added role %s", role)
+			}
 		case "local_lock":
 			if len(parsed) < 2 {
 				send("local_lock requires an argument")

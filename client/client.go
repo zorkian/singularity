@@ -78,26 +78,28 @@ func main() {
 	defer psock.Close()
 
 	// Determine which nodes we will be addressing.
-	var hosts []string
+	hosts := make(map[string]bool)
 	if *all {
-		hosts = nodes()
+		for _, host := range nodes() {
+			hosts[host] = false
+		}
 	} else {
 		if *host != "" {
-			hosts = strings.Split(*host, ",")
-			for i, _ := range hosts {
-				hosts[i] = strings.TrimSpace(hosts[i])
+			lhosts := strings.Split(*host, ",")
+			for _, host := range lhosts {
+				hosts[strings.TrimSpace(host)] = false
 			}
 		}
 
-		var roles []string
 		if *role != "" {
-			roles = strings.Split(*host, ",")
-			for i, _ := range roles {
-				roles[i] = strings.TrimSpace(roles[i])
+			roles := strings.Split(*role, ",")
+			for _, role := range roles {
+				lhosts := convertRoleToHosts(strings.TrimSpace(role))
+				for _, host := range lhosts {
+					hosts[host] = false
+				}
 			}
 		}
-
-		// BUG(mark): Now convert roles back to additional hosts.
 	}
 
 	// If we have been told to get a global lock, let's try to get that now.
@@ -110,7 +112,7 @@ func main() {
 	}
 
 	// Queue up the jobs and then execute them.
-	for _, host := range hosts {
+	for host, _ := range hosts {
 		queueJob(host, args)
 	}
 	runJobs(*jobs) // Returns when jobs are done.
@@ -167,4 +169,8 @@ func socketForIp(ip string) *zmq.Socket {
 		os.Exit(1)
 	}
 	return &sock
+}
+
+func convertRoleToHosts(role string) []string {
+	return dzr.GetdirLatest(fmt.Sprintf("/s/role/%s", role))
 }
