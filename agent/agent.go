@@ -194,7 +194,10 @@ func runAgent() {
 func runAgentWorker(id int, sock zmq.Socket) {
 	send := func(val string, args ...interface{}) {
 		log.Debug("(worker %d) sending: %s", id, val)
-		err := sock.Send([]byte(fmt.Sprintf(val, args)), 0)
+		if len(args) > 0 {
+			val = fmt.Sprintf(val, args)
+		}
+		err := sock.Send([]byte(val), 0)
 		if err != nil {
 			// BUG(mark): Handle error values. I'm uncertain what exactly an
 			// error means here. Can we continue to use this socket, or do we
@@ -236,7 +239,7 @@ func runAgentWorker(id int, sock zmq.Socket) {
 				send("add_role requires an argument")
 			} else {
 				role := strings.TrimSpace(parsed[1])
-				dzr.SetLatest(fmt.Sprintf("/s/role/%s/%s", role, hostname), "1")
+				dzr.SetLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname), "1")
 				send("added role %s", role)
 			}
 		case "local_lock":

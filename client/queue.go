@@ -106,7 +106,7 @@ func waitJobs() {
 			// Do nothing.
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 		if time.Now().After(nextStatus) {
 			dumpStatus()
 			nextStatus = time.Now().Add(10 * time.Second)

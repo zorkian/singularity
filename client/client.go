@@ -172,5 +172,5 @@ func socketForIp(ip string) *zmq.Socket {
 }
 
 func convertRoleToHosts(role string) []string {
-	return dzr.GetdirLatest(fmt.Sprintf("/s/role/%s", role))
+	return dzr.GetdirLatest(fmt.Sprintf("/s/cfg/role/%s", role))
 }
