@@ -46,6 +46,7 @@ func init() {
 
 func main() {
 	var myhost = flag.String("hostname", "", "this machine's hostname")
+	var myport = flag.Int("port", 7330, "port number to listen on")
 	var dzrhost = flag.String("doozer", "localhost:8046",
 		"host:port for doozer")
 	flag.Parse()
@@ -97,7 +98,7 @@ func main() {
 	// this particular node. If so, we want to wait a bit and see if they
 	// update again. If they are updating, then it is assumed they are running
 	// okay, and we shouldn't start up again.
-	lock := "/s/lock/" + hostname
+	lock := "/s/nlock/" + hostname
 	rev := dzr.Stat(lock, nil)
 
 	// If the lock is claimed, attempt to wait and see if the remote seems
@@ -127,22 +128,29 @@ func main() {
 	rev = dzr.Stat(lock, nil)
 	dzr.Set(lock, rev, gid)
 
+	// There are certain miscellaneous tasks that need to get done somewhere,
+	// so we use global locks to make sure that somebody is doing them. We
+	// don't really care who.
+	go manageGlobalFunc(5, "gf.expire-hosts", gfExpireHosts)
+	go manageGlobalFunc(5, "gf.expire-glocks", gfExpireGlobalLocks)
+
+	// Personal maintenance here.
 	go maintainInfo(&myinfo)
 	go maintainStanzas()
-	runAgent() // Returns when dead.
+	runAgent(*myport) // Returns when dead.
 }
 
 // runAgent sets up a simple ZMQ device that reads requests from people who
 // connect to us, passes them to some in-process worker goroutines, and
 // then spits back out the responses.
-func runAgent() {
+func runAgent(port int) {
 	frontend, err := zmq_ctx.NewSocket(zmq.ROUTER)
 	if err != nil {
 		log.Fatal("failed to make zmq frontend: %s", err)
 	}
 	defer frontend.Close()
 
-	err = frontend.Bind("tcp://*:7330")
+	err = frontend.Bind(fmt.Sprintf("tcp://*:%d", port))
 	if err != nil {
 		log.Fatal("failed to bind zmq frontend: %s", err)
 	}

@@ -142,7 +142,7 @@ func proxyCommand(cmd string) string {
 }
 
 func nodes() []string {
-	return dzr.GetdirLatest("/s/lock")
+	return dzr.GetdirLatest("/s/nlock")
 }
 
 func socketForHost(host string) *zmq.Socket {

@@ -63,16 +63,13 @@ func maintainInfo(info *InfoMap) {
 		// Hostname change check, as noted above.
 		newhostname, ok := newmyinfo["hostname"]
 		if newhostname != lhostname || newhostname != hostname || !ok {
-			log.Fatal("hostname changed mid-flight!")
+			//			log.Fatal("hostname changed mid-flight!")
 		}
 
 		// We can get the current repository revision because we are asserting
 		// that nobody else is updating these keys, and that we will only touch
 		// each key at most once. That way we don't have to track further revs.
-		rev, err := dzr.Rev()
-		if err != nil {
-			log.Fatal("failed fetching current revision: %s", err)
-		}
+		rev := dzr.Rev()
 
 		// Delete keys that have vanished from Old to New.
 		for key, _ := range *info {

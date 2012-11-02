@@ -48,6 +48,29 @@ func (dzr *Conn) Set(file string, oldRev int64, body string) int64 {
 	return newRev
 }
 
+func (dzr *Conn) Rev() int64 {
+	rev, err := dzr.Conn.Rev()
+	if err != nil {
+		log.Fatal("failed to get revision: %s", err)
+	}
+	return rev
+}
+
+func (dzr *Conn) DelLatest(file string) {
+	err := dzr.Conn.Del(file, dzr.Stat(file, nil))
+	if err != nil {
+		log.Fatal("failed to delete %s: %s", file, err)
+	}
+}
+
+func (dzr *Conn) GetdirinfoAll(file string) []doozer.FileInfo {
+	out, err := dzr.Conn.Getdirinfo(file, dzr.Rev(), 0, -1)
+	if err != nil {
+		log.Fatal("failed to getdirinfo on %s: %s", file, err)
+	}
+	return out
+}
+
 func (dzr *Conn) SetLatest(file string, body string) int64 {
 	oldRev := dzr.Stat(file, nil)
 	newRev, err := dzr.Conn.Set(file, oldRev, []byte(body))

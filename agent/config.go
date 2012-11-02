@@ -8,13 +8,13 @@
 package main
 
 import (
-   "flag"
-   "io/ioutil"
-   "os"
-   "path"
-   "strconv"
-   "strings"
-   yaml "launchpad.net/goyaml"
+	"flag"
+	"io/ioutil"
+	yaml "launchpad.net/goyaml"
+	"os"
+	"path"
+	"strconv"
+	"strings"
 )
 
 var cfgVersion int64 = 0
@@ -128,21 +128,21 @@ func (t *sngTime) SetYAML(tag string, value interface{}) bool {
 	factor := uint64(1)
 	if len(valstr) >= 2 {
 		switch valstr[len(valstr)-1] {
-			case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			case 's', 'S':
-			case 'm', 'M':
-				factor = 60
-			case 'h', 'H':
-				factor = 3600
-			case 'd', 'D':
-				factor = 86400
-			case 'w', 'W':
-				factor = 86400 * 7
-			default:
-				log.Error("Time string invalid: %s", valstr)
-				return false
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		case 's', 'S':
+		case 'm', 'M':
+			factor = 60
+		case 'h', 'H':
+			factor = 3600
+		case 'd', 'D':
+			factor = 86400
+		case 'w', 'W':
+			factor = 86400 * 7
+		default:
+			log.Error("Time string invalid: %s", valstr)
+			return false
 		}
-		valstr = valstr[0:len(valstr)-1]
+		valstr = valstr[0 : len(valstr)-1]
 	}
 
 	// Now try to parse the remaining string and set it.
@@ -171,28 +171,28 @@ func (t *sngBytes) SetYAML(tag string, value interface{}) bool {
 	if len(valstr) >= 3 {
 		c := valstr[len(valstr)-2]
 		if !(c >= '0' && c <= '9') {
-			valstr = valstr[0:len(valstr)-1]
+			valstr = valstr[0 : len(valstr)-1]
 		}
 	}
 
 	// This is a string that may or may not have a suffix like b, k, m, g, t.
 	if len(valstr) >= 2 {
 		switch valstr[len(valstr)-1] {
-			case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			case 'b', 'B':
-			case 'k', 'K':
-				factor = 1024
-			case 'm', 'M':
-				factor = 1024 * 1024
-			case 'g', 'G':
-				factor = 1024 * 1024 * 1024
-			case 't', 'T':
-				factor = 1024 * 1024 * 1024 * 1024
-			default:
-				log.Error("Byte string invalid: %s", valstr)
-				return false
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		case 'b', 'B':
+		case 'k', 'K':
+			factor = 1024
+		case 'm', 'M':
+			factor = 1024 * 1024
+		case 'g', 'G':
+			factor = 1024 * 1024 * 1024
+		case 't', 'T':
+			factor = 1024 * 1024 * 1024 * 1024
+		default:
+			log.Error("Byte string invalid: %s", valstr)
+			return false
 		}
-		valstr = valstr[0:len(valstr)-1]
+		valstr = valstr[0 : len(valstr)-1]
 	}
 
 	// Now try to parse the remaining string and set it.
