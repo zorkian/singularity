@@ -103,7 +103,7 @@ func gfExpireGlobalLocks(alive chan bool) {
 		// because there will be several other nodes in the cluster who are
 		// also doing this work. We don't want to get in sync.
 		alive <- true
-		time.Sleep(time.Duration(rand.Float32()*10) * time.Second)
+		time.Sleep(time.Duration(5+rand.Float32()*10) * time.Second)
 
 		// Because people might sneak in after we start, we want to get the
 		// current repository version. We ignore revisions after this.
@@ -147,8 +147,10 @@ func gfExpireHosts(alive chan bool) {
 	lastRevisions := make(map[string]*revisionTracker)
 
 	for {
+		// We sleep 5-15 seconds between iterations. We don't want to hit
+		// doozer too often...
 		alive <- true
-		time.Sleep(time.Duration(rand.Float32()*10) * time.Second)
+		time.Sleep(time.Duration(5+rand.Float32()*10) * time.Second)
 		now := time.Now().Unix()
 
 		// Find all hosts, iterate over them, see if any are not reporting in
@@ -173,7 +175,11 @@ func gfExpireHosts(alive chan bool) {
 
 			// If it hasn't been long enough, continue to wait.
 			if now < old.timestamp+30 {
-				log.Info("host %s didn't update its lock recently", server.Name)
+				// Alert if it's getting stale, though. This might help us see
+				// problems before they become huge.
+				if now > old.timestamp+3 {
+					log.Warn("host %s didn't update its lock recently", server.Name)
+				}
 				continue
 			}
 
