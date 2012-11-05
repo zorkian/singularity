@@ -82,16 +82,15 @@ func main() {
 		if !ok {
 			log.Fatal("getSelfInfo() did not return a hostname")
 		}
-		*myhost = myinfo["hostname"]
+		hostname = myinfo["hostname"]
 	} else {
 		log.Warn("user requested hostname override (command line argument)")
-		myinfo["hostname"] = *myhost
+		hostname = *myhost
 	}
 
 	// Global, easy to access variable since we use it everywhere. This is safe
 	// because it's read-only, too -- well, by definition. It isn't really. But
 	// if it changes in maintainInfo then we exit.
-	hostname = myinfo["hostname"]
 	log.Info("client starting with hostname %s", hostname)
 
 	// Now we have enough information to see if anybody else is claiming to be

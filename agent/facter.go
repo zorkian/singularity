@@ -62,8 +62,8 @@ func maintainInfo(info *InfoMap) {
 
 		// Hostname change check, as noted above.
 		newhostname, ok := newmyinfo["hostname"]
-		if newhostname != lhostname || newhostname != hostname || !ok {
-			//			log.Fatal("hostname changed mid-flight!")
+		if newhostname != lhostname || !ok {
+			log.Fatal("hostname changed mid-flight!")
 		}
 
 		// We can get the current repository revision because we are asserting
