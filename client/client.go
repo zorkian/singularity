@@ -44,7 +44,7 @@ func main() {
 
 	// Uses the nice golog package to handle logging arguments and flags
 	// so we don't have to worry about it.
-	log = logging.NewFromFlags()
+	log = logging.InitFromFlags()
 	safedoozer.SetLogger(log)
 
 	// Do some simple argument validation.
