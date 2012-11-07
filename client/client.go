@@ -27,6 +27,7 @@ var psock zmq.Socket
 var dzr *safedoozer.Conn
 var log logging.Logger
 var timeout int64
+var hostname string
 
 func main() {
 	var host = flag.String("H", "", "host (or hosts) to act on")
@@ -58,10 +59,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Figure out localhost.
+	var err error // If we use := below, we shadow the global, which is bad.
+	hostname, err = os.Hostname()
+	if err != nil {
+		log.Fatal("failed getting hostname: %s", err)
+	}
+
+	// Connect to our doozer host
 	dzr = safedoozer.Dial(*dzrhost)
 	defer dzr.Close()
 
-	var err error // If we use := below, we shadow the global, which is bad.
 	zmq_ctx, err = zmq.NewContext()
 	if err != nil {
 		log.Fatal("failed to init zmq: %s", err)
@@ -99,6 +107,11 @@ func main() {
 					hosts[host] = false
 				}
 			}
+		}
+
+		if *host == "" && *role == "" {
+			// Both empty, default to this machine.
+			hosts[hostname] = false
 		}
 	}
 

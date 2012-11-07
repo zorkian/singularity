@@ -199,6 +199,7 @@ func runAgent(port int) {
 }
 
 func runAgentWorker(id int, sock zmq.Socket) {
+	// BUG(mark): Apparently this doesn't work...
 	send := func(val string, args ...interface{}) {
 		log.Debug("(worker %d) sending: %s", id, val)
 		if len(args) > 0 {
