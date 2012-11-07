@@ -23,7 +23,7 @@ func getSelfInfo() (InfoMap, error) {
 	if err != nil {
 		return nil, err
 	}
-	myinfo["hostname"] = lhostname
+	myinfo["hostname"] = strings.Split(lhostname, ".")[0]
 
 	// For now, we are depending on facter to give us information about this
 	// system. I think that I like that? We should also investigate if Chef has
