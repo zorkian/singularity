@@ -9,7 +9,9 @@
 package main
 
 import (
+	"../proto"
 	"../safedoozer"
+	"code.google.com/p/goprotobuf/proto"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
@@ -134,13 +136,13 @@ func main() {
 
 	// If we have been told to get a global lock, let's try to get that now.
 	if *glock != "" {
-		resp := proxyCommand(fmt.Sprintf("global_lock %s", *glock))
+		resp := proxyCommand("global_lock", *glock)
 		if resp != "locked" {
 			log.Error("failed to get global lock %s: %s", *glock, resp)
 			os.Exit(1)
 		}
 		defer func(lock string) {
-			resp := proxyCommand(fmt.Sprintf("global_unlock %s", *glock))
+			resp := proxyCommand("global_unlock", *glock)
 			if resp != "unlocked" {
 				log.Error("failed to release global lock %s: %s", *glock, resp)
 			}
@@ -149,13 +151,13 @@ func main() {
 
 	// Same, local.
 	if *llock != "" {
-		resp := proxyCommand(fmt.Sprintf("local_lock %s", *llock))
+		resp := proxyCommand("local_lock", *llock)
 		if resp != "locked" {
 			log.Error("failed to get local lock %s: %s", *llock, resp)
 			os.Exit(1)
 		}
 		defer func(lock string) {
-			resp := proxyCommand(fmt.Sprintf("local_unlock %s", *llock))
+			resp := proxyCommand("local_unlock", *llock)
 			if resp != "unlocked" {
 				log.Error("failed to release local lock %s: %s", *llock, resp)
 			}
@@ -169,16 +171,54 @@ func main() {
 	runJobs(*jobs) // Returns when jobs are done.
 }
 
-func proxyCommand(cmd string) string {
-	log.Debug("proxy command: %s", cmd)
-	psock.Send([]byte(cmd), 0)
+func proxyCommand(cmd string, args ...string) string {
+	log.Debug("proxy command: %s %s", cmd, strings.Join(args, " "))
+
+	bcmd := []byte(cmd)
+	var bargs [][]byte
+	for _, arg := range args {
+		bargs = append(bargs, []byte(arg))
+	}
+
+	cmdpb := &singularity.Command{
+		Command: bcmd,
+		Args:    bargs,
+	}
+
+	buf, err := proto.Marshal(cmdpb)
+	if err != nil {
+		log.Error("failed to serialize protobuf: %s", err)
+		os.Exit(1)
+	}
+
+	err = psock.Send(buf, 0)
+	if err != nil {
+		log.Error("failed sending to proxy: %s", err)
+		os.Exit(1)
+	}
+
 	resp, err := psock.Recv(0)
 	if err != nil {
 		log.Error("failed to read from proxy agent: %s", err)
 		os.Exit(1)
 	}
-	log.Debug("proxy response: %s", resp)
-	return string(resp)
+
+	resppb := &singularity.Response{}
+	err = proto.Unmarshal(resp, resppb)
+	if err != nil {
+		log.Error("failed to unmarshal protobuf: %s", err)
+		os.Exit(1)
+	}
+
+	if *resppb.ExitCode != 0 {
+		log.Error("failed proxying command: %d", resppb.ExitCode)
+		log.Error("stdout = %s", resppb.Stdout)
+		log.Error("stderr = %s", resppb.Stderr)
+		os.Exit(1)
+	}
+
+	log.Debug("proxy response: %s", resppb.Stdout)
+	return string(resppb.Stdout)
 }
 
 func nodes() []string {

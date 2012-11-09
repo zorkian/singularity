@@ -15,7 +15,9 @@
 package main
 
 import (
+	"../proto"
 	"../safedoozer"
+	"code.google.com/p/goprotobuf/proto"
 	crand "crypto/rand"
 	"flag"
 	"fmt"
@@ -199,19 +201,34 @@ func runAgent(port int) {
 }
 
 func runAgentWorker(id int, sock zmq.Socket) {
-	// BUG(mark): Apparently this doesn't work...
-	send := func(val string, args ...interface{}) {
-		log.Debug("(worker %d) sending: %s", id, val)
-		if len(args) > 0 {
-			val = fmt.Sprintf(val, args)
-		}
-		err := sock.Send([]byte(val), 0)
+	send := func(val []byte) {
+		err := sock.Send(val, 0)
 		if err != nil {
 			// BUG(mark): Handle error values. I'm uncertain what exactly an
 			// error means here. Can we continue to use this socket, or do we
 			// need to throw it away and make a new one?
-			log.Warn("(worker %d) error on send: %s", id, err)
+			log.Error("(worker %d) error on send: %s", id, err)
 		}
+	}
+
+	sendpb := func(pbuf interface{}) {
+		buf, err := proto.Marshal(pbuf)
+		if err != nil {
+			log.Error("(worker %d) failed serializing protobuf: %s", id, err)
+		}
+		send(buf)
+	}
+
+	// BUG(mark): Apparently this doesn't work...
+	sendstr := func(val string) {
+		log.Debug("(worker %d) sending: %s", id, val)
+		var retval int32 = 0
+		var bytes []byte = []byte(val)
+		response := &singularity.Response{
+			ExitCode: &retval,
+			Stdout:   bytes,
+		}
+		sendpb(response)
 	}
 
 	log.Info("(worker %d) starting", id)
@@ -222,87 +239,107 @@ func runAgentWorker(id int, sock zmq.Socket) {
 			// sending us junk data.
 			// BUG(mark): Is that assertion valid? What if the socket has gone
 			// wobbly and something is terrible?
-			log.Warn("(worker %d) error reading from zmq socket: %s", id, err)
-			continue
-		}
-		log.Debug("(worker %d) received: %s", id, string(data))
-
-		parsed := strings.SplitN(strings.TrimSpace(string(data)), " ", 2)
-		if len(parsed) < 1 {
-			send("no command given")
+			log.Error("(worker %d) error reading from zmq socket: %s", id, err)
 			continue
 		}
 
-		switch parsed[0] {
+		// Parse the protobuf command
+		cmd := &singularity.Command{}
+		err = proto.Unmarshal(data, cmd)
+		if err != nil {
+			log.Error("(worker %d) failed parsing protobuf: %s", id, err)
+			continue
+		}
+		log.Debug("(worker %d) received: %s", id, cmd.Command)
+
+		command := string(cmd.Command)
+		if len(command) <= 0 {
+			sendstr("no command given")
+			continue
+		}
+
+		var args []string
+		for _, arg := range cmd.Args {
+			args = append(args, string(arg))
+		}
+
+		switch command {
 		case "exec":
-			if len(parsed) < 2 {
-				send("exec requires an argument")
+			if len(args) != 1 {
+				sendstr("exec requires exactly one argument")
 			} else {
-				send(string(handleClientExec(parsed[1])))
+				exitcode, stdout, stderr := handleClientExec(args[0])
+				resp := &singularity.Response{
+					ExitCode: &exitcode,
+					Stdout:   stdout,
+					Stderr:   stderr,
+				}
+				sendpb(resp)
 			}
 		case "doozer":
-			send(dzr.Address)
+			sendstr(dzr.Address)
 		case "add_role":
-			if len(parsed) < 2 {
-				send("add_role requires an argument")
+			if len(args) != 1 {
+				sendstr("add_role requires exactly one argument")
 			} else {
-				role := strings.TrimSpace(parsed[1])
+				role := strings.TrimSpace(args[0])
 				dzr.SetLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname), "1")
-				send("added role %s", role)
+				sendstr(fmt.Sprintf("added role %s", role))
 			}
 		case "local_lock":
-			if len(parsed) < 2 {
-				send("local_lock requires an argument")
+			if len(args) != 1 {
+				sendstr("local_lock requires exactly one argument")
 			} else {
-				if tryLocalLock(parsed[1]) {
-					send("locked")
+				if tryLocalLock(args[0]) {
+					sendstr("locked")
 				} else {
-					send("failed")
+					sendstr("failed")
 				}
 			}
 		case "local_unlock":
-			if len(parsed) < 2 {
-				send("local_unlock requires an argument")
+			if len(args) != 1 {
+				sendstr("local_unlock requires exactly one argument")
 			} else {
-				if localUnlock(parsed[1]) {
-					send("unlocked")
+				if localUnlock(args[0]) {
+					sendstr("unlocked")
 				} else {
-					send("not locked")
+					sendstr("not locked")
 				}
 			}
 		case "global_lock":
-			if len(parsed) < 2 {
-				send("global_lock requires an argument")
+			if len(args) != 1 {
+				sendstr("global_lock requires exactly one argument")
 			} else {
-				if tryGlobalLock(parsed[1]) {
-					send("locked")
+				if tryGlobalLock(args[0]) {
+					sendstr("locked")
 				} else {
-					send("failed")
+					sendstr("failed")
 				}
 			}
 		case "global_unlock":
-			if len(parsed) < 2 {
-				send("global_unlock requires an argument")
+			if len(args) != 1 {
+				sendstr("global_unlock requires exactly one argument")
 			} else {
-				if globalUnlock(parsed[1]) {
-					send("unlocked")
+				if globalUnlock(args[0]) {
+					sendstr("unlocked")
 				} else {
-					send("failed")
+					sendstr("failed")
 				}
 			}
 		case "die":
-			send("dying")
+			sendstr("dying")
 			log.Fatal("somebody requested we die, good-bye cruel world!")
 		default:
-			send(fmt.Sprintf("unknown command: %s", parsed[0]))
+			sendstr(fmt.Sprintf("unknown command: %s", command))
 		}
 	}
 }
 
 // Executes a comma
-func handleClientExec(command string) []byte {
+func handleClientExec(command string) (int32, []byte, []byte) {
 	// We shell out to bash and execute the command to ensure that we don't
 	// have to parse the command line ourselves.
+	var empty []byte
 	cmd := exec.Command("/bin/bash", "-c", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -310,10 +347,10 @@ func handleClientExec(command string) []byte {
 			// BUG(mark): when exit status is non-zero, add text to the end
 			// advising the user of this
 		} else {
-			return []byte(fmt.Sprintf("failed to run: %s", err))
+			return 0, []byte(fmt.Sprintf("failed to run: %s", err)), empty
 		}
 	}
-	return output
+	return 0, output, empty
 }
 
 func maintainLock(lock string, curRev int64) {

@@ -7,6 +7,8 @@
 package main
 
 import (
+	"../proto"
+	"code.google.com/p/goprotobuf/proto"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
 	"strings"
@@ -43,7 +45,17 @@ func doSimpleCommand(host, command, arg string) {
 		log.Error("host %s: socket never became writeable", host)
 		return
 	}
-	(*sock).Send([]byte(fmt.Sprintf("%s %s", command, arg)), 0)
+
+	cmdpb := &singularity.Command{
+		Command: []byte(command),
+		Args:    [][]byte{[]byte(arg)},
+	}
+	buf, err := proto.Marshal(cmdpb)
+	if err != nil {
+		log.Error("host %s: failed to marshal protobuf: %s", host, err)
+		return
+	}
+	(*sock).Send(buf, 0)
 
 	// Wait for this socket to have data, for up to a certain timeout.
 	if !waitForRecv(sock, timeout) {
@@ -57,9 +69,17 @@ func doSimpleCommand(host, command, arg string) {
 	}
 	duration := time.Now().Sub(start)
 
+	resppb := &singularity.Response{}
+	err = proto.Unmarshal(resp, resppb)
+	if err != nil {
+		log.Error("host %s: failed to unmarshal protobuf: %s", host, err)
+		return
+	}
+
 	// Annoying way to remove a trailing empty line? Maybe there is a better
 	// way of doing this.
-	split := strings.Split(string(resp), "\n")
+	// TODO(mark): Use Stderr and ExitCode here.
+	split := strings.Split(string(resppb.Stdout), "\n")
 	endpt := len(split) - 1
 	for i := endpt; i >= 0; i-- {
 		if split[i] != "" {
