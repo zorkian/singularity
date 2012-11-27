@@ -17,7 +17,6 @@ package main
 import (
 	"../proto"
 	"../safedoozer"
-	"code.google.com/p/goprotobuf/proto"
 	crand "crypto/rand"
 	"flag"
 	"fmt"
@@ -172,7 +171,7 @@ func runAgent(port int) {
 	// configurable?
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			sock, err := zmq_ctx.NewSocket(zmq.REP)
+			sock, err := zmq_ctx.NewSocket(zmq.DEALER)
 			if err != nil {
 				log.Fatal("failed to make zmq worker: %s", err)
 			}
@@ -183,7 +182,7 @@ func runAgent(port int) {
 				log.Fatal("failed to connect zmq worker: %s", err)
 			}
 
-			runAgentWorker(id, sock)
+			runAgentWorker(id, &sock)
 		}(i)
 	}
 
@@ -200,157 +199,238 @@ func runAgent(port int) {
 	}
 }
 
-func runAgentWorker(id int, sock zmq.Socket) {
-	send := func(val []byte) {
-		err := sock.Send(val, 0)
-		if err != nil {
-			// BUG(mark): Handle error values. I'm uncertain what exactly an
-			// error means here. Can we continue to use this socket, or do we
-			// need to throw it away and make a new one?
-			log.Error("(worker %d) error on send: %s", id, err)
-		}
-	}
-
-	sendpb := func(pbuf interface{}) {
-		buf, err := proto.Marshal(pbuf)
-		if err != nil {
-			log.Error("(worker %d) failed serializing protobuf: %s", id, err)
-		}
-		send(buf)
-	}
-
-	// BUG(mark): Apparently this doesn't work...
-	sendstr := func(val string) {
-		log.Debug("(worker %d) sending: %s", id, val)
-		var retval int32 = 0
-		var bytes []byte = []byte(val)
-		response := &singularity.Response{
-			ExitCode: &retval,
-			Stdout:   bytes,
-		}
-		sendpb(response)
-	}
-
+func runAgentWorker(id int, sock *zmq.Socket) {
 	log.Info("(worker %d) starting", id)
 	for {
-		data, err := sock.Recv(0)
+		log.Debug("(worker %d) reading", id)
+		remote, pb, err := singularity.ReadPb(sock)
 		if err != nil {
-			// Don't consider errors fatal, since it's probably just somebody
-			// sending us junk data.
-			// BUG(mark): Is that assertion valid? What if the socket has gone
-			// wobbly and something is terrible?
 			log.Error("(worker %d) error reading from zmq socket: %s", id, err)
 			continue
 		}
 
-		// Parse the protobuf command
-		cmd := &singularity.Command{}
-		err = proto.Unmarshal(data, cmd)
-		if err != nil {
-			log.Error("(worker %d) failed parsing protobuf: %s", id, err)
-			continue
-		}
-		log.Debug("(worker %d) received: %s", id, cmd.Command)
-
-		command := string(cmd.Command)
-		if len(command) <= 0 {
-			sendstr("no command given")
+		// Make sure it's a Command packet. That's the only valid thing
+		// at this point.
+		if cmd, ok := pb.(*singularity.Command); ok {
+			handleCommand(id, sock, remote, cmd)
 			continue
 		}
 
-		var args []string
-		for _, arg := range cmd.Args {
-			args = append(args, string(arg))
-		}
-
-		switch command {
-		case "exec":
-			if len(args) != 1 {
-				sendstr("exec requires exactly one argument")
-			} else {
-				exitcode, stdout, stderr := handleClientExec(args[0])
-				resp := &singularity.Response{
-					ExitCode: &exitcode,
-					Stdout:   stdout,
-					Stderr:   stderr,
-				}
-				sendpb(resp)
-			}
-		case "doozer":
-			sendstr(dzr.Address)
-		case "add_role":
-			if len(args) != 1 {
-				sendstr("add_role requires exactly one argument")
-			} else {
-				role := strings.TrimSpace(args[0])
-				dzr.SetLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname), "1")
-				sendstr(fmt.Sprintf("added role %s", role))
-			}
-		case "local_lock":
-			if len(args) != 1 {
-				sendstr("local_lock requires exactly one argument")
-			} else {
-				if tryLocalLock(args[0]) {
-					sendstr("locked")
-				} else {
-					sendstr("failed")
-				}
-			}
-		case "local_unlock":
-			if len(args) != 1 {
-				sendstr("local_unlock requires exactly one argument")
-			} else {
-				if localUnlock(args[0]) {
-					sendstr("unlocked")
-				} else {
-					sendstr("not locked")
-				}
-			}
-		case "global_lock":
-			if len(args) != 1 {
-				sendstr("global_lock requires exactly one argument")
-			} else {
-				if tryGlobalLock(args[0]) {
-					sendstr("locked")
-				} else {
-					sendstr("failed")
-				}
-			}
-		case "global_unlock":
-			if len(args) != 1 {
-				sendstr("global_unlock requires exactly one argument")
-			} else {
-				if globalUnlock(args[0]) {
-					sendstr("unlocked")
-				} else {
-					sendstr("failed")
-				}
-			}
-		case "die":
-			sendstr("dying")
-			log.Fatal("somebody requested we die, good-bye cruel world!")
-		default:
-			sendstr(fmt.Sprintf("unknown command: %s", command))
-		}
+		log.Error("(worker %d) received unexpected protobuf: %v", id, pb)
 	}
 }
 
-// Executes a comma
-func handleClientExec(command string) (int32, []byte, []byte) {
-	// We shell out to bash and execute the command to ensure that we don't
-	// have to parse the command line ourselves.
-	var empty []byte
-	cmd := exec.Command("/bin/bash", "-c", command)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
-			// BUG(mark): when exit status is non-zero, add text to the end
-			// advising the user of this
-		} else {
-			return 0, []byte(fmt.Sprintf("failed to run: %s", err)), empty
+// handleCommand takes an input command and executes it.
+func handleCommand(id int, sock *zmq.Socket, remote []byte, cmd *singularity.Command) {
+	sendstr := func(output string) {
+		err := singularity.QuickResponse(sock, remote, output)
+		if err != nil {
+			log.Error("(worker %d) failed to respond: %s", id, err)
 		}
 	}
-	return 0, output, empty
+
+	log.Debug("(worker %d) received: %s", id, cmd.Command)
+	command := string(cmd.Command)
+	if len(command) <= 0 {
+		sendstr("no command given")
+		return
+	}
+
+	var args []string
+	for _, arg := range cmd.Args {
+		args = append(args, string(arg))
+	}
+
+	switch command {
+	case "exec":
+		if len(args) != 1 {
+			sendstr("exec requires exactly one argument")
+		} else {
+			err := handleClientExec(id, sock, remote, args[0])
+			if err != nil {
+				log.Error("(worker %d) failed exec: %s", id, err)
+			}
+		}
+	case "doozer":
+		sendstr(dzr.Address)
+	case "add_role":
+		if len(args) != 1 {
+			sendstr("add_role requires exactly one argument")
+		} else {
+			role := strings.TrimSpace(args[0])
+			dzr.SetLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname), "1")
+			sendstr(fmt.Sprintf("added role %s", role))
+		}
+	case "local_lock":
+		if len(args) != 1 {
+			sendstr("local_lock requires exactly one argument")
+		} else {
+			if tryLocalLock(args[0]) {
+				sendstr("locked")
+			} else {
+				sendstr("failed")
+			}
+		}
+	case "local_unlock":
+		if len(args) != 1 {
+			sendstr("local_unlock requires exactly one argument")
+		} else {
+			if localUnlock(args[0]) {
+				sendstr("unlocked")
+			} else {
+				sendstr("not locked")
+			}
+		}
+	case "global_lock":
+		if len(args) != 1 {
+			sendstr("global_lock requires exactly one argument")
+		} else {
+			if tryGlobalLock(args[0]) {
+				sendstr("locked")
+			} else {
+				sendstr("failed")
+			}
+		}
+	case "global_unlock":
+		if len(args) != 1 {
+			sendstr("global_unlock requires exactly one argument")
+		} else {
+			if globalUnlock(args[0]) {
+				sendstr("unlocked")
+			} else {
+				sendstr("failed")
+			}
+		}
+	case "die":
+		sendstr("dying")
+		log.Fatal("somebody requested we die, good-bye cruel world!")
+	default:
+		sendstr(fmt.Sprintf("unknown command: %s", command))
+	}
+}
+
+// makeReaderChannel returns a channel that you can poll for data from the
+// given io.ReadCloser. This also takes a bool channel that, when it has
+// something in it, causes the goroutine to exit the next time we get a
+// result from the pipe.
+//
+// This channel will write a nil when the socket has closed. Errors are
+// currently suppressed.
+func makeReaderChannel(rdr io.ReadCloser, exit chan bool) chan []byte {
+	ch := make(chan []byte, 100)
+	go func(inp io.ReadCloser) {
+		for {
+			if len(exit) > 0 {
+				ch <- nil
+				return
+			}
+			buf := make([]byte, 65536)
+			ct, err := inp.Read(buf)
+			if ct > 0 {
+				ch <- buf[0:ct]
+			}
+			if err != nil {
+				ch <- nil
+				return
+			}
+		}
+	}(rdr)
+	return ch
+}
+
+// handleClientExec takes a command given to us from a client and executes it,
+// passing the output back to the user as we get it.
+func handleClientExec(id int, sock *zmq.Socket, remote []byte, command string) error {
+	// We shell out to bash and execute the command to ensure that we don't
+	// have to parse the command line ourselves.
+	cmd := exec.Command("/bin/bash", "-c", command)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	defer stdout.Close()
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	defer stderr.Close()
+
+	// Now set up a goroutine that monitors those outputs and feeds the
+	// output back to the client. We can use a channel to wait for a
+	// notification to exit the goroutine.
+	exit := make(chan bool, 2) // Two to prevent blocking us.
+	go func() {
+		// Create chans for reading in stdin/stdout.
+		ch_stdout := makeReaderChannel(stdout, exit)
+		ch_stderr := makeReaderChannel(stderr, exit)
+
+		// Cleanup function.
+		defer func() {
+			exit <- true
+		}()
+
+		// Now we want to watch for input on these channels and send it out
+		// to the user. When one of these channels close, we consider the
+		// entire system to be dead and kill everybody off.
+		nilct := 0
+		for {
+			select {
+			case <-exit:
+				// This only happens in a timeout condition. In which case,
+				// since we've now drained exit, another value gets put on
+				// when we exit.
+				return
+			case buf := <-ch_stdout:
+				if buf == nil {
+					if nilct += 1; nilct == 2 {
+						return
+					}
+					continue
+				}
+				singularity.WritePb(sock, remote,
+					&singularity.CommandOutput{Stdout: buf})
+			case buf := <-ch_stderr:
+				if buf == nil {
+					if nilct += 1; nilct == 2 {
+						return
+					}
+					continue
+				}
+				singularity.WritePb(sock, remote,
+					&singularity.CommandOutput{Stderr: buf})
+			}
+		}
+	}()
+
+	// Now we want to start the command, which spins it off in another
+	// process...
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	// Now we can wait for it to run. For now, we sleep a second.
+	timeout := time.Now().Add(5 * time.Second)
+	for {
+		if len(exit) > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+		if time.Now().After(timeout) {
+			log.Error("(worker %d) command timed out, killing", id)
+			err := cmd.Process.Kill()
+			if err != nil {
+				log.Error("(worker %d) failed to kill: %s", id, err)
+			}
+			exit <- true
+			break
+		}
+	}
+
+	// By now, it should have run and be done.
+	var retval int32 = 0
+	singularity.WritePb(sock, remote,
+		&singularity.CommandFinished{ExitCode: &retval})
+	return nil
 }
 
 func maintainLock(lock string, curRev int64) {

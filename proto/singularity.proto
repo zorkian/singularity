@@ -9,8 +9,11 @@ message StillAlive {
 
 }
 
-message Response {
+message CommandFinished {
 	required int32 exit_code = 1;
-	optional bytes stdout = 2;
-	optional bytes stderr = 3;
+}
+
+message CommandOutput {
+	optional bytes stdout = 1;
+	optional bytes stderr = 2;	
 }

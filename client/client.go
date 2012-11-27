@@ -11,7 +11,6 @@ package main
 import (
 	"../proto"
 	"../safedoozer"
-	"code.google.com/p/goprotobuf/proto"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
@@ -25,7 +24,7 @@ type EmptyFunc func()
 type WaitChan chan int
 
 var zmq_ctx zmq.Context
-var psock zmq.Socket
+var psock *zmq.Socket
 var dzr *safedoozer.Conn
 var log logging.Logger
 var timeout int64
@@ -88,12 +87,12 @@ func main() {
 
 	// Connect to the proxy agent. This is the agent we will be having do all
 	// of the work for us. This is probably localhost.
-	psock = *socketForIp(*proxy)
+	psock = socketForIp(*proxy)
 	if psock == nil {
 		log.Error("unable to connect to proxy agent")
 		os.Exit(1)
 	}
-	defer psock.Close()
+	defer (*psock).Close()
 
 	// Determine which nodes we will be addressing.
 	hosts := make(map[string]bool)
@@ -180,45 +179,46 @@ func proxyCommand(cmd string, args ...string) string {
 		bargs = append(bargs, []byte(arg))
 	}
 
-	cmdpb := &singularity.Command{
-		Command: bcmd,
-		Args:    bargs,
-	}
-
-	buf, err := proto.Marshal(cmdpb)
+	err := singularity.WritePb(psock, nil,
+		&singularity.Command{Command: bcmd, Args: bargs})
 	if err != nil {
-		log.Error("failed to serialize protobuf: %s", err)
+		log.Error("failed to write: %s", err)
 		os.Exit(1)
 	}
 
-	err = psock.Send(buf, 0)
-	if err != nil {
-		log.Error("failed sending to proxy: %s", err)
-		os.Exit(1)
+	var stdout, stderr string
+	for {
+		_, resp, err := singularity.ReadPb(psock)
+		if err != nil {
+			log.Error("failed to read: %s", err)
+			os.Exit(1)
+		}
+
+		switch resp.(type) {
+		case *singularity.CommandOutput:
+			stdout = stdout + string(resp.(*singularity.CommandOutput).Stdout)
+			stderr = stderr + string(resp.(*singularity.CommandOutput).Stderr)
+			if len(stderr) > 0 {
+				log.Error(stderr)
+				stderr = ""
+			}
+		case *singularity.CommandFinished:
+			if retval := resp.(*singularity.CommandFinished).ExitCode; *retval != 0 {
+				log.Error("return value: %d", *retval)
+				os.Exit(1)
+			}
+			log.Debug("proxy response: %s", stdout)
+			return stdout
+		default:
+			log.Error("unexpected protobuf: %v", resp)
+			os.Exit(1)
+		}
 	}
 
-	resp, err := psock.Recv(0)
-	if err != nil {
-		log.Error("failed to read from proxy agent: %s", err)
-		os.Exit(1)
-	}
-
-	resppb := &singularity.Response{}
-	err = proto.Unmarshal(resp, resppb)
-	if err != nil {
-		log.Error("failed to unmarshal protobuf: %s", err)
-		os.Exit(1)
-	}
-
-	if *resppb.ExitCode != 0 {
-		log.Error("failed proxying command: %d", resppb.ExitCode)
-		log.Error("stdout = %s", resppb.Stdout)
-		log.Error("stderr = %s", resppb.Stderr)
-		os.Exit(1)
-	}
-
-	log.Debug("proxy response: %s", resppb.Stdout)
-	return string(resppb.Stdout)
+	// We should never get here.
+	log.Error("unexpected early exit")
+	os.Exit(1)
+	return "" // Heh.
 }
 
 func nodes() []string {
@@ -236,7 +236,7 @@ func socketForHost(host string) *zmq.Socket {
 }
 
 func socketForIp(ip string) *zmq.Socket {
-	sock, err := zmq_ctx.NewSocket(zmq.REQ)
+	sock, err := zmq_ctx.NewSocket(zmq.DEALER)
 	if err != nil {
 		log.Error("failed to create zmq socket: %s", err)
 		os.Exit(1)

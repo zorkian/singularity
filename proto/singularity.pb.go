@@ -26,15 +26,22 @@ type StillAlive struct {
 func (this *StillAlive) Reset()         { *this = StillAlive{} }
 func (this *StillAlive) String() string { return proto.CompactTextString(this) }
 
-type Response struct {
+type CommandFinished struct {
 	ExitCode         *int32 `protobuf:"varint,1,req,name=exit_code" json:"exit_code,omitempty"`
-	Stdout           []byte `protobuf:"bytes,2,opt,name=stdout" json:"stdout,omitempty"`
-	Stderr           []byte `protobuf:"bytes,3,opt,name=stderr" json:"stderr,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
 
-func (this *Response) Reset()         { *this = Response{} }
-func (this *Response) String() string { return proto.CompactTextString(this) }
+func (this *CommandFinished) Reset()         { *this = CommandFinished{} }
+func (this *CommandFinished) String() string { return proto.CompactTextString(this) }
+
+type CommandOutput struct {
+	Stdout           []byte `protobuf:"bytes,1,opt,name=stdout" json:"stdout,omitempty"`
+	Stderr           []byte `protobuf:"bytes,2,opt,name=stderr" json:"stderr,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (this *CommandOutput) Reset()         { *this = CommandOutput{} }
+func (this *CommandOutput) String() string { return proto.CompactTextString(this) }
 
 func init() {
 }
