@@ -8,8 +8,7 @@ package main
 
 import (
 	"../proto"
-	"fmt"
-	"strings"
+	"os"
 	"time"
 )
 
@@ -51,7 +50,7 @@ func doSimpleCommand(host, command, arg string) {
 		return
 	}
 
-	var stdout, stderr string
+	var stdout, stderr []byte
 	for {
 		// Wait for this socket to have data, for up to a certain timeout.
 		//		if !singularity.WaitForRecv(sock, timeout) {
@@ -67,14 +66,13 @@ func doSimpleCommand(host, command, arg string) {
 
 		switch resp.(type) {
 		case *singularity.CommandOutput:
-			stderr = stderr + string(resp.(*singularity.CommandOutput).Stderr)
-			printOutput(&stderr, false)
-			stdout = stdout + string(resp.(*singularity.CommandOutput).Stdout)
-			printOutput(&stdout, false)
+			co := resp.(*singularity.CommandOutput)
+			appendAndWrite(os.Stdout, &stdout, co.Stdout, false)
+			appendAndWrite(os.Stderr, &stderr, co.Stderr, false)
 		case *singularity.CommandFinished:
 			duration := time.Now().Sub(start)
-			printOutput(&stderr, true)
-			printOutput(&stdout, true)
+			appendAndWrite(os.Stdout, &stdout, nil, true)
+			appendAndWrite(os.Stderr, &stderr, nil, true)
 			if retval := resp.(*singularity.CommandFinished).ExitCode; *retval != 0 {
 				log.Error("[%s] unexpected return value: %d", host, *retval)
 			}
@@ -87,21 +85,27 @@ func doSimpleCommand(host, command, arg string) {
 	}
 }
 
-func printOutput(str *string, everything bool) {
-	if everything {
-		// Just dump whatever we have left.
-		fmt.Printf(*str)
-		*str = ""
+func appendAndWrite(file *os.File, src *[]byte, apnd []byte, finish bool) {
+	if apnd != nil && len(apnd) > 0 {
+		*src = append(*src, apnd...)
+	}
+	if len(*src) <= 0 {
 		return
 	}
-
-	// We're going to remove lines and print them one by one.
 	for {
-		i := strings.Index(*str, "\n")
-		if i == -1 {
-			break
+		n, err := file.Write(*src)
+		if err != nil {
+			log.Error("failed writing: %s", err)
+			return
 		}
-		fmt.Printf((*str)[0 : i+1])
-		*str = (*str)[i+1:]
+		if n == len(*src) {
+			*src = make([]byte, 0)
+		} else {
+			*src = (*src)[n:]
+		}
+		if len(*src) > 0 && finish {
+			continue
+		}
+		break
 	}
 }
