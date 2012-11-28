@@ -43,7 +43,7 @@ func ReadPb(sock *zmq.Socket) ([]byte, interface{}, error) {
 		return nil, nil, errors.New(fmt.Sprintf("unknown packet type: %d", resp[0]))
 	}
 
-	err = proto.Unmarshal(resp[1:], pb)
+	err = proto.Unmarshal(resp[1:], pb.(proto.Message))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -70,7 +70,7 @@ func WritePb(sock *zmq.Socket, remote []byte, pb interface{}) error {
 		return errors.New(fmt.Sprintf("attempted to send unknown object: %v", pb))
 	}
 
-	buf, err := proto.Marshal(pb)
+	buf, err := proto.Marshal(pb.(proto.Message))
 	if err != nil {
 		return err
 	}
