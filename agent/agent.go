@@ -246,7 +246,7 @@ func handleCommand(id int, sock *zmq.Socket, remote []byte, cmd *singularity.Com
 		if len(args) != 1 {
 			sendstr("exec requires exactly one argument")
 		} else {
-			err := handleClientExec(id, sock, remote, args[0])
+			err := handleClientExec(id, sock, remote, args[0], cmd.GetTimeout())
 			if err != nil {
 				log.Error("(worker %d) failed exec: %s", id, err)
 			}
@@ -340,7 +340,8 @@ func makeReaderChannel(rdr io.ReadCloser, exit chan bool) chan []byte {
 
 // handleClientExec takes a command given to us from a client and executes it,
 // passing the output back to the user as we get it.
-func handleClientExec(id int, sock *zmq.Socket, remote []byte, command string) error {
+func handleClientExec(id int, sock *zmq.Socket, remote []byte,
+	command string, ttl uint32) error {
 	// We shell out to bash and execute the command to ensure that we don't
 	// have to parse the command line ourselves.
 	cmd := exec.Command("/bin/bash", "-c", command)
@@ -408,8 +409,8 @@ func handleClientExec(id int, sock *zmq.Socket, remote []byte, command string) e
 		return err
 	}
 
-	// Now we can wait for it to run. For now, we sleep a second.
-	timeout := time.Now().Add(5 * time.Second)
+	// Now we can wait for it to run. we have 
+	timeout := time.Now().Add(time.Duration(ttl) * time.Second)
 	for {
 		if len(exit) > 0 {
 			break

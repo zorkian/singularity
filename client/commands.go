@@ -43,8 +43,10 @@ func doSimpleCommand(host, command, arg string) {
 		return
 	}
 
+	var ltimeout uint32 = uint32(timeout)
 	err := singularity.WritePb(sock, nil,
-		&singularity.Command{Command: []byte(command), Args: [][]byte{[]byte(arg)}})
+		&singularity.Command{Command: []byte(command),
+			Args: [][]byte{[]byte(arg)}, Timeout: &ltimeout})
 	if err != nil {
 		log.Error("[%s] failed to send: %s", host, err)
 		return
@@ -52,12 +54,6 @@ func doSimpleCommand(host, command, arg string) {
 
 	var stdout, stderr []byte
 	for {
-		// Wait for this socket to have data, for up to a certain timeout.
-		//		if !singularity.WaitForRecv(sock, timeout) {
-		//log.Error("[%s] timeout receiving response", host)
-		//return
-		//}
-
 		_, resp, err := singularity.ReadPb(sock)
 		if err != nil {
 			log.Error("[%s] failed to read: %s", host, err)

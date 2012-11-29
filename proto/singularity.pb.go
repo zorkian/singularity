@@ -16,6 +16,7 @@ var _ = math.Inf
 type Command struct {
 	Command          []byte   `protobuf:"bytes,1,req,name=command" json:"command,omitempty"`
 	Args             [][]byte `protobuf:"bytes,2,rep,name=args" json:"args,omitempty"`
+	Timeout          *uint32  `protobuf:"varint,3,opt,name=timeout" json:"timeout,omitempty"`
 	XXX_unrecognized []byte   `json:"-"`
 }
 
@@ -28,6 +29,13 @@ func (this *Command) GetCommand() []byte {
 		return this.Command
 	}
 	return nil
+}
+
+func (this *Command) GetTimeout() uint32 {
+	if this != nil && this.Timeout != nil {
+		return *this.Timeout
+	}
+	return 0
 }
 
 type StillAlive struct {

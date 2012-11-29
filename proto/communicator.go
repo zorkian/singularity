@@ -103,10 +103,10 @@ func WritePb(sock *zmq.Socket, remote []byte, pb interface{}) error {
 // WaitForRecv polls a ZMQ socket for a certain amount of time to see when it's
 // ready for us to receive data. This returns when there is data (or, I think,
 // when the socket is dead).
-func WaitForRecv(sock *zmq.Socket, timeout int64) bool {
+func WaitForRecv(sock *zmq.Socket, timeout int) bool {
 	pi := make([]zmq.PollItem, 1)
 	pi[0] = zmq.PollItem{Socket: *sock, Events: zmq.POLLIN}
-	zmq.Poll(pi, timeout*1000000)
+	zmq.Poll(pi, int64(timeout*1000000))
 	if pi[0].REvents == zmq.POLLIN {
 		return true
 	}
@@ -116,10 +116,10 @@ func WaitForRecv(sock *zmq.Socket, timeout int64) bool {
 // WaitForSend polls a ZMQ socket until it's writable. After this returns true,
 // you should be able to write to the socket immediately. Note that this often
 // returns true while a socket is still being connected -- ZMQ likes to buffer.
-func WaitForSend(sock *zmq.Socket, timeout int64) bool {
+func WaitForSend(sock *zmq.Socket, timeout int) bool {
 	pi := make([]zmq.PollItem, 1)
 	pi[0] = zmq.PollItem{Socket: *sock, Events: zmq.POLLOUT}
-	zmq.Poll(pi, timeout*1000000)
+	zmq.Poll(pi, int64(timeout*1000000))
 	if pi[0].REvents == zmq.POLLOUT {
 		return true
 	}

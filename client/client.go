@@ -27,7 +27,7 @@ var zmq_ctx zmq.Context
 var psock *zmq.Socket
 var dzr *safedoozer.Conn
 var log logging.Logger
-var timeout int64
+var timeout int
 var hostname string
 
 func main() {
@@ -40,10 +40,14 @@ func main() {
 	var dzrhost = flag.String("doozer", "localhost:8046",
 		"host:port for doozer")
 	var jobs = flag.Int("j", 0, "jobs to run in parallel")
-	var tout = flag.Int64("t", 20, "timeout (in seconds) for jobs")
+	var tout = flag.Int("t", 20, "timeout (in seconds) for jobs")
 	flag.Parse()
 
 	timeout = *tout
+	if timeout < 0 {
+		log.Error("timeout must be 0 (no timeout) or positive")
+		os.Exit(1)
+	}
 
 	// Uses the nice golog package to handle logging arguments and flags
 	// so we don't have to worry about it.
