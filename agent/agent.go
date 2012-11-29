@@ -330,7 +330,7 @@ func makeReaderChannel(rdr io.ReadCloser, exit chan bool) chan []byte {
 				ch <- buf[0:ct]
 			}
 			if err != nil {
-				ch <- nil
+				close(ch)
 				return
 			}
 		}
@@ -373,7 +373,6 @@ func handleClientExec(id int, sock *zmq.Socket, remote []byte,
 		// Now we want to watch for input on these channels and send it out
 		// to the user. When one of these channels close, we consider the
 		// entire system to be dead and kill everybody off.
-		nilct := 0
 		for {
 			select {
 			case <-exit:
@@ -381,18 +380,20 @@ func handleClientExec(id int, sock *zmq.Socket, remote []byte,
 				// since we've now drained exit, another value gets put on
 				// when we exit.
 				return
-			case buf := <-ch_stdout:
-				if buf == nil {
-					if nilct += 1; nilct == 2 {
+			case buf, ok := <-ch_stdout:
+				if !ok {
+					ch_stdout = nil
+					if ch_stderr == nil {
 						return
 					}
 					continue
 				}
 				singularity.WritePb(sock, remote,
 					&singularity.CommandOutput{Stdout: buf})
-			case buf := <-ch_stderr:
-				if buf == nil {
-					if nilct += 1; nilct == 2 {
+			case buf, ok := <-ch_stderr:
+				if !ok {
+					ch_stderr = nil
+					if ch_stdout == nil {
 						return
 					}
 					continue
