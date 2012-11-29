@@ -409,26 +409,43 @@ func handleClientExec(id int, sock *zmq.Socket, remote []byte,
 		return err
 	}
 
-	// Now we can wait for it to run. we have 
-	timeout := time.Now().Add(time.Duration(ttl) * time.Second)
-	for {
-		if len(exit) > 0 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-		if time.Now().After(timeout) {
-			log.Error("(worker %d) command timed out, killing", id)
-			err := cmd.Process.Kill()
-			if err != nil {
-				log.Error("(worker %d) failed to kill: %s", id, err)
+	// Now we can wait for it to run, up to the timeout. If we have one.
+	if ttl > 0 {
+		timeout := time.Now().Add(time.Duration(ttl) * time.Second)
+		for {
+			if len(exit) > 0 {
+				break
 			}
-			exit <- true
-			break
+			time.Sleep(100 * time.Millisecond)
+			if time.Now().After(timeout) {
+				log.Error("(worker %d) command timed out, killing", id)
+				err := cmd.Process.Kill()
+				if err != nil {
+					log.Error("(worker %d) failed to kill: %s", id, err)
+				}
+				exit <- true
+				break
+			}
+		}
+	}
+
+	// Should be dead. Reap the process so we can get the return value.
+	var retval int32 = 0
+	if err := cmd.Wait(); err != nil {
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			// The program has exited with an exit code != 0.
+			// There is no plattform independent way to retrieve
+			// the exit code, but the following will work on Unix.
+			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+				retval = int32(status.ExitStatus())
+				log.Error("(worker %d) exit code %d", id, retval)
+			}
+		} else {
+			log.Error("(worker %d) wait returned: %s", id, err)
 		}
 	}
 
 	// By now, it should have run and be done.
-	var retval int32 = 0
 	singularity.WritePb(sock, remote,
 		&singularity.CommandFinished{ExitCode: &retval})
 	return nil
