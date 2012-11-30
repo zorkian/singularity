@@ -13,7 +13,7 @@ import (
 )
 
 func isValidCommand(cmd string) bool {
-	if cmd == "exec" || cmd == "add_role" {
+	if cmd == "exec" || cmd == "add_role" || cmd == "del_role" {
 	} else {
 		return false
 	}

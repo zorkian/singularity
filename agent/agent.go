@@ -223,7 +223,7 @@ func runAgentWorker(id int, sock *zmq.Socket) {
 // handleCommand takes an input command and executes it.
 func handleCommand(id int, sock *zmq.Socket, remote []byte, cmd *singularity.Command) {
 	sendstr := func(output string) {
-		err := singularity.QuickResponse(sock, remote, output)
+		err := singularity.QuickResponse(sock, remote, output+"\n")
 		if err != nil {
 			log.Error("(worker %d) failed to respond: %s", id, err)
 		}
@@ -260,6 +260,14 @@ func handleCommand(id int, sock *zmq.Socket, remote []byte, cmd *singularity.Com
 			role := strings.TrimSpace(args[0])
 			dzr.SetLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname), "1")
 			sendstr(fmt.Sprintf("added role %s", role))
+		}
+	case "del_role":
+		if len(args) != 1 {
+			sendstr("del_role requires exactly one argument")
+		} else {
+			role := strings.TrimSpace(args[0])
+			dzr.DelLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname))
+			sendstr(fmt.Sprintf("deleted role %s", role))
 		}
 	case "local_lock":
 		if len(args) != 1 {
