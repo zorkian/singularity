@@ -83,7 +83,11 @@ func doSimpleCommand(host, command, arg string) {
 			writeOutput(os.Stdout, &stdout, host, true)
 			writeOutput(os.Stderr, &stderr, host, true)
 			if retval := resp.(*singularity.CommandFinished).ExitCode; *retval != 0 {
-				log.Error("[%s] unexpected return value: %d", host, *retval)
+				if nowarn {
+					log.Info("[%s] unexpected return value: %d", host, *retval)
+				} else {
+					log.Error("[%s] unexpected return value: %d", host, *retval)
+				}
 			}
 			log.Debug("[%s] finished in %s", host, duration)
 			return

@@ -53,7 +53,7 @@ func dumpStatus() {
 	for idx, job := range jqueue {
 		strs[idx] = job.Status()
 	}
-	log.Error("jobs queued: %s", strings.Join(strs, " "))
+	log.Info("jobs queued for hosts: %s", strings.Join(strs, " "))
 }
 
 func runJobs(jobs int) {

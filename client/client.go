@@ -29,13 +29,13 @@ var dzr *safedoozer.Conn
 var log logging.Logger
 var timeout int
 var hostname string
-var serial, binary bool
+var serial, binary, nowarn bool
 
 func main() {
 	var host = flag.String("H", "", "host (or hosts) to act on")
 	var role = flag.String("R", "", "role (or roles) to act on")
 	var proxy = flag.String("P", "127.0.0.1", "agent to interact with")
-	var all = flag.Bool("A", false, "act globally")
+	var all = flag.Bool("A", false, "act on all live nodes")
 	var fserial = flag.Bool("s", false, "print output when commands finish")
 	var fbinary = flag.Bool("b", false, "force binary mode output")
 	var ftext = flag.Bool("l", false, "force line mode output")
@@ -45,6 +45,7 @@ func main() {
 		"host:port for doozer")
 	var jobs = flag.Int("j", 0, "jobs to run in parallel")
 	var tout = flag.Int("t", 20, "timeout (in seconds) for jobs")
+	var fnowarn = flag.Bool("w", false, "suppress error text output")
 	flag.Parse()
 
 	timeout = *tout
@@ -52,6 +53,7 @@ func main() {
 		log.Error("timeout must be 0 (no timeout) or positive")
 		os.Exit(1)
 	}
+	nowarn = *fnowarn
 
 	// The output selection modes. By default, we assume that if the output
 	// is from a single machine, it's binary and we don't touch it. However,
