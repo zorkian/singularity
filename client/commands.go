@@ -8,6 +8,8 @@ package main
 
 import (
 	"../proto"
+	"bytes"
+	"fmt"
 	"os"
 	"time"
 )
@@ -63,12 +65,20 @@ func doSimpleCommand(host, command, arg string) {
 		switch resp.(type) {
 		case *singularity.CommandOutput:
 			co := resp.(*singularity.CommandOutput)
-			appendAndWrite(os.Stdout, &stdout, co.Stdout, false)
-			appendAndWrite(os.Stderr, &stderr, co.Stderr, false)
+			if co.Stdout != nil && len(co.Stdout) > 0 {
+				stdout = append(stdout, co.Stdout...)
+			}
+			if co.Stderr != nil && len(co.Stderr) > 0 {
+				stderr = append(stderr, co.Stderr...)
+			}
+			if !serial {
+				writeOutput(os.Stdout, &stdout, host, false)
+				writeOutput(os.Stderr, &stderr, host, false)
+			}
 		case *singularity.CommandFinished:
 			duration := time.Now().Sub(start)
-			appendAndWrite(os.Stdout, &stdout, nil, true)
-			appendAndWrite(os.Stderr, &stderr, nil, true)
+			writeOutput(os.Stdout, &stdout, host, true)
+			writeOutput(os.Stderr, &stderr, host, true)
 			if retval := resp.(*singularity.CommandFinished).ExitCode; *retval != 0 {
 				log.Error("[%s] unexpected return value: %d", host, *retval)
 			}
@@ -81,9 +91,56 @@ func doSimpleCommand(host, command, arg string) {
 	}
 }
 
-func appendAndWrite(file *os.File, src *[]byte, apnd []byte, finish bool) {
-	if apnd != nil && len(apnd) > 0 {
-		*src = append(*src, apnd...)
+func writeTextOutput(file *os.File, src *[]byte, host string, finish bool) {
+	// If this is not a binary write, we only want to write out when
+	// we have a full line; up to a \n. TODO: do we want to handle the
+	// other line ending types? We only claim to support Linux and they
+	// mostly use bare \n.
+	if len(*src) <= 0 {
+		return
+	}
+	for {
+		idx := bytes.IndexByte(*src, '\n')
+		if idx == -1 {
+			if finish {
+				// Stick a newline on it so that our flow works.
+				*src = append(*src, '\n')
+				idx = len(*src) - 1
+			} else {
+				break
+			}
+		}
+
+		_, err := fmt.Fprintf(file, "[%s] ", host)
+		if err != nil {
+			log.Error("failed writing: %s", err)
+			return
+		}
+
+		// Print out from start to newline, include it
+		n, err := file.Write((*src)[0 : idx+1])
+		if err != nil {
+			log.Error("failed writing: %s", err)
+			return
+		}
+		if n == len(*src) {
+			*src = make([]byte, 0)
+		} else {
+			*src = (*src)[n+1:]
+		}
+		if len(*src) > 0 && finish {
+			continue
+		}
+		break
+	}
+}
+
+func writeOutput(file *os.File, src *[]byte, host string, finish bool) {
+	if !binary {
+		// If we're in text mode, bail out to the text parser. This simplifies
+		// the overall function logic.
+		writeTextOutput(file, src, host, finish)
+		return
 	}
 	if len(*src) <= 0 {
 		return

@@ -29,12 +29,16 @@ var dzr *safedoozer.Conn
 var log logging.Logger
 var timeout int
 var hostname string
+var serial, binary bool
 
 func main() {
 	var host = flag.String("H", "", "host (or hosts) to act on")
 	var role = flag.String("R", "", "role (or roles) to act on")
 	var proxy = flag.String("P", "127.0.0.1", "agent to interact with")
 	var all = flag.Bool("A", false, "act globally")
+	var fserial = flag.Bool("s", false, "print output when commands finish")
+	var fbinary = flag.Bool("b", false, "force binary mode output")
+	var ftext = flag.Bool("l", false, "force line mode output")
 	var glock = flag.String("G", "", "global lock to claim")
 	var llock = flag.String("L", "", "local lock to claim")
 	var dzrhost = flag.String("doozer", "localhost:8046",
@@ -48,6 +52,21 @@ func main() {
 		log.Error("timeout must be 0 (no timeout) or positive")
 		os.Exit(1)
 	}
+
+	// The output selection modes. By default, we assume that if the output
+	// is from a single machine, it's binary and we don't touch it. However,
+	// if the user is running against multiple targets, we assume that the
+	// output is line-based and we prefix the hostname returning each line.
+	//
+	// Line based defaults to interleaved. The serial flag can be used to
+	// ask us to buffer each host's output and then dump it all at once when
+	// that host is done. This is more useful for doing a batch job and having
+	// easily read output later, but still running commands in parallel.
+	//
+	// Finally, the user can force binary mode on multi-host outputs, which
+	// makes us not touch the output.
+	serial = *fserial
+	binary = *fbinary && !*ftext
 
 	// Uses the nice golog package to handle logging arguments and flags
 	// so we don't have to worry about it.
@@ -165,6 +184,12 @@ func main() {
 				log.Error("failed to release local lock %s: %s", *llock, resp)
 			}
 		}(*llock)
+	}
+
+	// If we're targetting multiple machines, adjust the output options unless
+	// the user has forced us to text mode.
+	if len(hosts) == 1 {
+		binary = true && !*ftext
 	}
 
 	// Queue up the jobs and then execute them.
