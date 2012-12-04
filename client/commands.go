@@ -11,8 +11,11 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 )
+
+var writeMutex sync.Mutex
 
 func isValidCommand(cmd string) bool {
 	if cmd == "exec" || cmd == "add_role" || cmd == "del_role" {
@@ -99,6 +102,12 @@ func writeTextOutput(file *os.File, src *[]byte, host string, finish bool) {
 	if len(*src) <= 0 {
 		return
 	}
+
+	// We never want to get interrupted in writing our output, so take
+	// the lock and hold it until we exit.
+	writeMutex.Lock()
+	defer writeMutex.Unlock()
+
 	for {
 		idx := bytes.IndexByte(*src, '\n')
 		if idx == -1 {
