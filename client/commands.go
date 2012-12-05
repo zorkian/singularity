@@ -139,7 +139,7 @@ func writeTextOutput(file *os.File, src *[]byte, host string, finish bool) {
 		if n == len(*src) {
 			*src = make([]byte, 0)
 		} else {
-			*src = (*src)[n+1:]
+			*src = (*src)[n:]
 		}
 		if len(*src) > 0 && finish {
 			continue
