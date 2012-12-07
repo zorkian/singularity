@@ -103,9 +103,6 @@ func writeTextOutput(file *os.File, src *[]byte, host string, finish bool) {
 	// we have a full line; up to a \n. TODO: do we want to handle the
 	// other line ending types? We only claim to support Linux and they
 	// mostly use bare \n.
-	if len(*src) <= 0 {
-		return
-	}
 
 	// We never want to get interrupted in writing our output, so take
 	// the lock and hold it until we exit.
@@ -113,6 +110,10 @@ func writeTextOutput(file *os.File, src *[]byte, host string, finish bool) {
 	defer writeMutex.Unlock()
 
 	for {
+		if len(*src) <= 0 {
+			return
+		}
+
 		idx := bytes.IndexByte(*src, '\n')
 		if idx == -1 {
 			if finish {
@@ -141,10 +142,8 @@ func writeTextOutput(file *os.File, src *[]byte, host string, finish bool) {
 		} else {
 			*src = (*src)[n:]
 		}
-		if len(*src) > 0 && finish {
-			continue
-		}
-		break
+		// Always continue. The top part of this will break us out of the for
+		// loop if we need to.
 	}
 }
 
