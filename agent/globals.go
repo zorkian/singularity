@@ -69,20 +69,17 @@ func manageGlobalFunc(count int, lock string, job GlobalFunc) {
 		// every 60 seconds at least. If not, then we will panic and take
 		// the entire agent offline to make sure no harm is done by having
 		// an unresponsive global function.
+	HEARTBEAT:
 		for {
-			doExit := false
 			select {
 			case <-heartbeat:
 				log.Debug("manageGlobal: heartbeat for %s received", lock)
 				lastHeartbeat = time.Now().Unix()
 			case <-exited:
 				log.Warn("manageGlobal: function %s has exited", lock)
-				doExit = true
+				break HEARTBEAT
 			default:
 				time.Sleep(1 * time.Second)
-			}
-			if doExit {
-				break // Because a 'break' above only falls out of the select.
 			}
 
 			// The worst case.
