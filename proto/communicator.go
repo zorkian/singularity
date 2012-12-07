@@ -125,20 +125,3 @@ func WaitForSend(sock *zmq.Socket, timeout int) bool {
 	}
 	return false
 }
-
-// QuickResponse batches up a command output and finished response for a
-// successful command. This is used in places that just want to send out
-// a fast bit of text to a command.
-func QuickResponse(sock *zmq.Socket, remote []byte, output string) error {
-	err := WritePb(sock, remote, &CommandOutput{Stdout: []byte(output)})
-	if err != nil {
-		return err
-	}
-
-	var retval int32 = 0
-	err = WritePb(sock, remote, &CommandFinished{ExitCode: &retval})
-	if err != nil {
-		return err
-	}
-	return nil
-}

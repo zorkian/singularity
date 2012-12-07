@@ -25,18 +25,17 @@ import (
 	//	"github.com/xb95/singularity/safedoozer"
 	logging "github.com/fluffle/golog/logging"
 	"math/rand"
-	"os/exec"
-	"strings"
-	"syscall"
 	"time"
 )
 
 type InfoMap map[string]string
+type messagePump func([]byte, interface{}) error
 
 var zmq_ctx zmq.Context
 var dzr *safedoozer.Conn
 var log logging.Logger
 var gid, hostname string
+var sendMessage messagePump
 
 func init() {
 	// Create our new unique id
@@ -155,309 +154,36 @@ func runAgent(port int) {
 		log.Fatal("failed to bind zmq frontend: %s", err)
 	}
 
-	backend, err := zmq_ctx.NewSocket(zmq.DEALER)
-	if err != nil {
-		log.Fatal("failed to make zmq backend: %s", err)
-	}
-	defer backend.Close()
-
-	err = backend.Bind("ipc://agent.ipc")
-	if err != nil {
-		log.Fatal("failed to bind zmq frontend: %s", err)
+	// This is a global function used by everybody to send messages out to
+	// the clients.
+	sendMessage = func(remote []byte, pb interface{}) error {
+		return singularity.WritePb(&frontend, remote, pb)
 	}
 
-	// BUG(mark): We should make this detect when all workers are busy and then
-	// spawn new ones? Automatically adjust for load? Or make it command line
-	// configurable?
-	for i := 0; i < 10; i++ {
-		go func(id int) {
-			sock, err := zmq_ctx.NewSocket(zmq.DEALER)
-			if err != nil {
-				log.Fatal("failed to make zmq worker: %s", err)
-			}
-			defer sock.Close()
-
-			err = sock.Connect("ipc://agent.ipc")
-			if err != nil {
-				log.Fatal("failed to connect zmq worker: %s", err)
-			}
-
-			runAgentWorker(id, &sock)
-		}(i)
-	}
-
-	// This won't return.
 	for {
-		err = zmq.Device(zmq.QUEUE, frontend, backend)
+		log.Debug("(pump) reading")
+		remote, pb, err := singularity.ReadPb(&frontend)
 		if err != nil {
-			if err == syscall.EINTR {
-				log.Warn("device interrupted, resuming")
-				continue
-			}
-			log.Fatal("failed to create zmq device: %s", err)
-		}
-	}
-}
-
-func runAgentWorker(id int, sock *zmq.Socket) {
-	log.Info("(worker %d) starting", id)
-	for {
-		log.Debug("(worker %d) reading", id)
-		remote, pb, err := singularity.ReadPb(sock)
-		if err != nil {
-			log.Error("(worker %d) error reading from zmq socket: %s", id, err)
+			log.Error("(pump) error reading from zmq socket: %s", err)
 			continue
 		}
 
-		// Make sure it's a Command packet. That's the only valid thing
-		// at this point.
-		if cmd, ok := pb.(*singularity.Command); ok {
-			handleCommand(id, sock, remote, cmd)
+		worker := getWorker(remote)
+		if worker == nil {
+			log.Error("(pump) failed to get worker for remote")
 			continue
 		}
 
-		log.Error("(worker %d) received unexpected protobuf: %v", id, pb)
-	}
-}
-
-// handleCommand takes an input command and executes it.
-func handleCommand(id int, sock *zmq.Socket, remote []byte, cmd *singularity.Command) {
-	sendstr := func(output string) {
-		err := singularity.QuickResponse(sock, remote, output+"\n")
-		if err != nil {
-			log.Error("(worker %d) failed to respond: %s", id, err)
+		select {
+		case worker.input <- pb:
+			// Nothing to do here, we sent it to the worker. That's all we care
+			// about here.
+		default:
+			// We weren't able to send it. Is the channel full? For now, we
+			// just discard packets.
+			log.Error("(pump) discarding protobuf, unable to write to worker")
 		}
 	}
-
-	log.Debug("(worker %d) received: %s", id, cmd.Command)
-	command := string(cmd.Command)
-	if len(command) <= 0 {
-		sendstr("no command given")
-		return
-	}
-
-	var args []string
-	for _, arg := range cmd.Args {
-		args = append(args, string(arg))
-	}
-
-	switch command {
-	case "exec":
-		if len(args) != 1 {
-			sendstr("exec requires exactly one argument")
-		} else {
-			err := handleClientExec(id, sock, remote, args[0], cmd.GetTimeout())
-			if err != nil {
-				log.Error("(worker %d) failed exec: %s", id, err)
-			}
-		}
-	case "doozer":
-		sendstr(dzr.Address)
-	case "add_role":
-		if len(args) != 1 {
-			sendstr("add_role requires exactly one argument")
-		} else {
-			role := strings.TrimSpace(args[0])
-			dzr.SetLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname), "1")
-			sendstr(fmt.Sprintf("added role %s", role))
-		}
-	case "del_role":
-		if len(args) != 1 {
-			sendstr("del_role requires exactly one argument")
-		} else {
-			role := strings.TrimSpace(args[0])
-			dzr.DelLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname))
-			sendstr(fmt.Sprintf("deleted role %s", role))
-		}
-	case "local_lock":
-		if len(args) != 1 {
-			sendstr("local_lock requires exactly one argument")
-		} else {
-			if tryLocalLock(args[0]) {
-				sendstr("locked")
-			} else {
-				sendstr("failed")
-			}
-		}
-	case "local_unlock":
-		if len(args) != 1 {
-			sendstr("local_unlock requires exactly one argument")
-		} else {
-			if localUnlock(args[0]) {
-				sendstr("unlocked")
-			} else {
-				sendstr("not locked")
-			}
-		}
-	case "global_lock":
-		if len(args) != 1 {
-			sendstr("global_lock requires exactly one argument")
-		} else {
-			if tryGlobalLock(args[0]) {
-				sendstr("locked")
-			} else {
-				sendstr("failed")
-			}
-		}
-	case "global_unlock":
-		if len(args) != 1 {
-			sendstr("global_unlock requires exactly one argument")
-		} else {
-			if globalUnlock(args[0]) {
-				sendstr("unlocked")
-			} else {
-				sendstr("failed")
-			}
-		}
-	case "die":
-		sendstr("dying")
-		log.Fatal("somebody requested we die, good-bye cruel world!")
-	default:
-		sendstr(fmt.Sprintf("unknown command: %s", command))
-	}
-}
-
-// makeReaderChannel returns a channel that you can poll for data from the
-// given io.ReadCloser. This also takes a bool channel that, when it has
-// something in it, causes the goroutine to exit the next time we get a
-// result from the pipe.
-//
-// This channel will write a nil when the socket has closed. Errors are
-// currently suppressed.
-func makeReaderChannel(rdr io.ReadCloser, exit chan bool) chan []byte {
-	ch := make(chan []byte, 100)
-	go func(inp io.ReadCloser) {
-		for {
-			if len(exit) > 0 {
-				ch <- nil
-				return
-			}
-			buf := make([]byte, 65536)
-			ct, err := inp.Read(buf)
-			if ct > 0 {
-				ch <- buf[0:ct]
-			}
-			if err != nil {
-				close(ch)
-				return
-			}
-		}
-	}(rdr)
-	return ch
-}
-
-// handleClientExec takes a command given to us from a client and executes it,
-// passing the output back to the user as we get it.
-func handleClientExec(id int, sock *zmq.Socket, remote []byte,
-	command string, ttl uint32) error {
-	// We shell out to bash and execute the command to ensure that we don't
-	// have to parse the command line ourselves.
-	cmd := exec.Command("/bin/bash", "-c", command)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	defer stdout.Close()
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	defer stderr.Close()
-
-	// Now set up a goroutine that monitors those outputs and feeds the
-	// output back to the client. We can use a channel to wait for a
-	// notification to exit the goroutine.
-	exit := make(chan bool, 2) // Two to prevent blocking us.
-	go func() {
-		// Create chans for reading in stdin/stdout.
-		ch_stdout := makeReaderChannel(stdout, exit)
-		ch_stderr := makeReaderChannel(stderr, exit)
-
-		// Cleanup function.
-		defer func() {
-			exit <- true
-		}()
-
-		// Now we want to watch for input on these channels and send it out
-		// to the user. When one of these channels close, we consider the
-		// entire system to be dead and kill everybody off.
-		for {
-			select {
-			case <-exit:
-				// This only happens in a timeout condition. In which case,
-				// since we've now drained exit, another value gets put on
-				// when we exit.
-				return
-			case buf, ok := <-ch_stdout:
-				if !ok {
-					ch_stdout = nil
-					if ch_stderr == nil {
-						return
-					}
-					continue
-				}
-				singularity.WritePb(sock, remote,
-					&singularity.CommandOutput{Stdout: buf})
-			case buf, ok := <-ch_stderr:
-				if !ok {
-					ch_stderr = nil
-					if ch_stdout == nil {
-						return
-					}
-					continue
-				}
-				singularity.WritePb(sock, remote,
-					&singularity.CommandOutput{Stderr: buf})
-			}
-		}
-	}()
-
-	// Now we want to start the command, which spins it off in another
-	// process...
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	// Now we can wait for it to run, up to the timeout. If we have one.
-	if ttl > 0 {
-		timeout := time.Now().Add(time.Duration(ttl) * time.Second)
-		for {
-			if len(exit) > 0 {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-			if time.Now().After(timeout) {
-				log.Error("(worker %d) command timed out, killing", id)
-				err := cmd.Process.Kill()
-				if err != nil {
-					log.Error("(worker %d) failed to kill: %s", id, err)
-				}
-				exit <- true
-				break
-			}
-		}
-	}
-
-	// Should be dead. Reap the process so we can get the return value.
-	var retval int32 = 0
-	if err := cmd.Wait(); err != nil {
-		if exiterr, ok := err.(*exec.ExitError); ok {
-			// The program has exited with an exit code != 0.
-			// There is no plattform independent way to retrieve
-			// the exit code, but the following will work on Unix.
-			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-				retval = int32(status.ExitStatus())
-				log.Error("(worker %d) exit code %d", id, retval)
-			}
-		} else {
-			log.Error("(worker %d) wait returned: %s", id, err)
-		}
-	}
-
-	// By now, it should have run and be done.
-	singularity.WritePb(sock, remote,
-		&singularity.CommandFinished{ExitCode: &retval})
-	return nil
 }
 
 func maintainLock(lock string, curRev int64) {
@@ -469,6 +195,10 @@ func maintainLock(lock string, curRev int64) {
 			log.Fatal("failed to maintain lock: %s", err)
 		}
 		curRev = nnrev
+
+		// TODO(mark): Tv_ from #go-nuts pointed out that if this goroutine is
+		// blocked on TCP things, that we won't die and someone else will take
+		// our lock. That's a bad state.
 
 		// We update every second and dictate that people who are seeing if we
 		// are lively check less often than that. Of course, if we do happen to

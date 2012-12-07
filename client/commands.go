@@ -59,7 +59,7 @@ func doSimpleCommand(host, command, arg string) {
 
 	var stdout, stderr []byte
 	for {
-		_, resp, err := singularity.ReadPb(sock)
+		remote, resp, err := singularity.ReadPb(sock)
 		if err != nil {
 			log.Error("[%s] failed to read: %s", host, err)
 			return
@@ -91,6 +91,13 @@ func doSimpleCommand(host, command, arg string) {
 			}
 			log.Debug("[%s] finished in %s", host, duration)
 			return
+		case *singularity.StillAlive:
+			log.Debug("[%s] ping? pong!", host)
+			err := singularity.WritePb(sock, remote, &singularity.StillAlive{})
+			if err != nil {
+				log.Error("[%s] failed pong: %s", host, err)
+				return
+			}
 		default:
 			log.Error("[%s] unexpected protobuf: %v", resp)
 			return
