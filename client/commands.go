@@ -18,7 +18,8 @@ import (
 var writeMutex sync.Mutex
 
 func isValidCommand(cmd string) bool {
-	if cmd == "exec" || cmd == "add_role" || cmd == "del_role" {
+	if cmd == "exec" || cmd == "add_role" || cmd == "del_role" ||
+		cmd == "die" {
 	} else {
 		return false
 	}
