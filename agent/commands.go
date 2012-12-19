@@ -19,6 +19,7 @@ import (
 // handleCommand takes an input command and executes it.
 func handleCommand(lworker *worker, cmd *singularity.Command) {
 	sendstr := func(output string) {
+		output = output + "\n"
 		err := sendMessage(lworker.addr,
 			&singularity.CommandOutput{Stdout: []byte(output)})
 		if err != nil {
