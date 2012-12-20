@@ -29,7 +29,7 @@ var dzr *safedoozer.Conn
 var log logging.Logger
 var timeout int
 var hostname string
-var serial, binary, nowarn bool
+var serial, binary, nowarn, verbose bool
 
 func main() {
 	var host = flag.String("H", "", "host (or hosts) to act on")
@@ -46,6 +46,8 @@ func main() {
 	var jobs = flag.Int("j", 0, "jobs to run in parallel")
 	var tout = flag.Int("t", 20, "timeout (in seconds) for jobs")
 	var fnowarn = flag.Bool("w", false, "suppress error text output")
+
+	flag.Usage = clientUsage
 	flag.Parse()
 
 	timeout = *tout
@@ -77,8 +79,8 @@ func main() {
 
 	// Do some simple argument validation.
 	args := flag.Args()
-	if len(args) < 1 {
-		log.Error("no commands given")
+	if len(args) == 0 {
+		flag.Usage()
 		os.Exit(1)
 	}
 	if !isValidCommand(args[0], args[1:]) {
@@ -192,6 +194,8 @@ func main() {
 	switch args[0] {
 	case "roles":
 		cmdRoles()
+	case "hosts":
+		cmdHosts()
 	}
 
 	// If we're targetting multiple machines, adjust the output options unless
@@ -290,4 +294,13 @@ func socketForIp(ip string) *zmq.Socket {
 
 func convertRoleToHosts(role string) []string {
 	return dzr.GetdirLatest(fmt.Sprintf("/s/cfg/role/%s", role))
+}
+
+// clientUsage prints out the usage document for the client portion of the app.
+func clientUsage() {
+	// gofmt is a little sad here.
+	fmt.Print(
+		"foo" +
+			"bar" +
+			"baz\n")
 }

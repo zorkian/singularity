@@ -11,6 +11,8 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,7 +24,20 @@ var writeMutex sync.Mutex
 // user more useful usage information.
 func isValidCommand(cmd string, args []string) bool {
 	switch cmd {
-	case "die", "roles":
+	case "hosts", "roles":
+		if len(args) > 0 {
+			if args[0] == "-v" || args[0] == "--verbose" {
+				verbose = true
+				args = args[1:]
+			}
+		}
+		if len(args) > 0 {
+			log.Error("command %s takes no arguments", cmd)
+			log.Error("(except optionally one -v/--verbose flag)")
+			return false
+		}
+		return true
+	case "die":
 		if len(args) > 0 {
 			log.Error("command %s takes no arguments", cmd)
 			return false
@@ -203,8 +218,54 @@ func writeOutput(file *os.File, src *[]byte, host string, finish bool) {
 
 // cmdRoles gets a list of roles and prints them out, then exits.
 func cmdRoles() {
-	for _, role := range dzr.GetdirLatestSafe("/s/cfg/role") {
-		fmt.Println(role)
+	roles := dzr.GetdirLatestSafe("/s/cfg/role")
+	sort.Strings(roles)
+	for _, role := range roles {
+		if verbose {
+			hosts := dzr.GetdirLatestSafe("/s/cfg/role/" + role)
+			sort.Strings(hosts)
+			fmt.Printf("%s: %s\n", role, strings.Join(hosts, ", "))
+		} else {
+			fmt.Println(role)
+		}
+	}
+	os.Exit(0)
+}
+
+// cmdHosts prints out hosts. If verbose, we also print out the roles for each
+// of the hosts.
+func cmdHosts() {
+	// We'll need this later if we're in verbose mode.
+	hosts := make(map[string]map[string]bool)
+	if verbose {
+		for _, role := range dzr.GetdirLatestSafe("/s/cfg/role") {
+			for _, node := range dzr.GetdirLatestSafe("/s/cfg/role/" + role) {
+				if _, ok := hosts[node]; !ok {
+					hosts[node] = make(map[string]bool)
+				}
+				hosts[node][role] = true
+			}
+		}
+	}
+
+	// Tradeoff here: /s/node gets us everybody that has ever configured, but
+	// /s/nlock gets us people who are expected to be alive. I'm not sure what
+	// is better. For now, we use liveliness.
+	nodes := dzr.GetdirLatestSafe("/s/nlock")
+	sort.Strings(nodes)
+	for _, node := range nodes {
+		if verbose {
+			roles := make([]string, 0)
+			if _, ok := hosts[node]; ok {
+				for role, _ := range hosts[node] {
+					roles = append(roles, role)
+				}
+				sort.Strings(roles)
+			}
+			fmt.Printf("%s: %s\n", node, strings.Join(roles, ", "))
+		} else {
+			fmt.Println(node)
+		}
 	}
 	os.Exit(0)
 }
