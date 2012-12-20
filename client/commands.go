@@ -17,19 +17,37 @@ import (
 
 var writeMutex sync.Mutex
 
-func isValidCommand(cmd string) bool {
-	if cmd == "exec" || cmd == "add_role" || cmd == "del_role" ||
-		cmd == "die" {
-	} else {
+// isValidCommand looks at the command the user is wanting to run and checks
+// for validity. The server will do this too, but we do it here to give the
+// user more useful usage information.
+func isValidCommand(cmd string, args []string) bool {
+	switch cmd {
+	case "die", "roles":
+		if len(args) > 0 {
+			log.Error("command %s takes no arguments", cmd)
+			return false
+		}
+		return true
+	case "exec", "add_role", "del_role":
+		if len(args) != 1 {
+			log.Error("command %s takes exactly one argument", cmd)
+			return false
+		}
+		return true
+	default:
+		log.Error("command %s unknown", cmd)
 		return false
 	}
-	return true
+	return false
 }
 
 func runJob(job *Job) {
 	doSimpleCommand(job.host, job.job[0], job.job[1])
 }
 
+// doSimpleCommand executes a command against a backend.
+// FIXME: this can timeout in certain cases. We should make it so that the
+// client can abort itself if a remote is timing out.
 func doSimpleCommand(host, command, arg string) {
 	log.Debug("[%s] command: %s", host, command)
 
@@ -181,4 +199,12 @@ func writeOutput(file *os.File, src *[]byte, host string, finish bool) {
 		}
 		break
 	}
+}
+
+// cmdRoles gets a list of roles and prints them out, then exits.
+func cmdRoles() {
+	for _, role := range dzr.GetdirLatestSafe("/s/cfg/role") {
+		fmt.Println(role)
+	}
+	os.Exit(0)
 }

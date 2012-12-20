@@ -81,8 +81,7 @@ func main() {
 		log.Error("no commands given")
 		os.Exit(1)
 	}
-	if !isValidCommand(args[0]) {
-		log.Error("invalid command: %s", args[0])
+	if !isValidCommand(args[0], args[1:]) {
 		os.Exit(1)
 	}
 
@@ -186,6 +185,13 @@ func main() {
 				log.Error("failed to release local lock %s: %s", *llock, resp)
 			}
 		}(*llock)
+	}
+
+	// There are some commands which are client-only and don't run against a
+	// given set of hosts. For these, just execute locally and then we're done.
+	switch args[0] {
+	case "roles":
+		cmdRoles()
 	}
 
 	// If we're targetting multiple machines, adjust the output options unless

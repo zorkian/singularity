@@ -100,3 +100,22 @@ func (dzr *Conn) GetdirLatest(file string) []string {
 	}
 	return dirs
 }
+
+// GetdirLatestSafe gets the latest contents of a directory safely. If we get a
+// NOENT error, we consider that OK and return an empty slice. This prevents us
+// from crashing if a directory doesn't exist in doozer.
+func (dzr *Conn) GetdirLatestSafe(file string) []string {
+	rev, err := dzr.Conn.Rev()
+	if err != nil {
+		log.Fatal("failed to get rev %s: %s", file, err)
+	}
+
+	dirs, err := dzr.Conn.Getdir(file, rev, 0, -1)
+	if err != nil {
+		if err.Error() == "NOENT" {
+			return []string{}
+		}
+		log.Fatal("failed to getdir %s: %s", file, err)
+	}
+	return dirs
+}
