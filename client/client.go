@@ -299,8 +299,42 @@ func convertRoleToHosts(role string) []string {
 // clientUsage prints out the usage document for the client portion of the app.
 func clientUsage() {
 	// gofmt is a little sad here.
-	fmt.Print(
-		"foo" +
-			"bar" +
-			"baz\n")
+	fmt.Print("sng-client -- the Singularity client\n" +
+		"\n" +
+		"Usage:\n" +
+		"    sng-client [options] <command> [arguments]\n" +
+		"\n" +
+		"Options generally fall into categories that allow you to specify where to run\n" +
+		"the commands and the behavior of the client.\n" +
+		"\n" +
+		"Global Options:\n" +
+		"    -doozer host:port      Set the doozerd service to talk to.\n" +
+		"    -P host:port           sng-agent to use as proxy. (Default: localhost.)\n" +
+		"    -L lockname            Get local local before running.\n" +
+		"    -G lockname            Get cluster-wide lock before running.\n" +
+		"\n" +
+		"Target Options:\n" +
+		"    -A                     Select all hosts.\n" +
+		"    -H host1,host2,...     Select host(s) to execute command on.\n" +
+		"    -R role1,role2,...     Select role(s) to execute command on.\n" +
+		"\n" +
+		"Execution Options:\n" +
+		"    -t seconds             Time (in seconds) before the commands time out.\n" +
+		"    -j number              Jobs to run in parallel. 0 for all.\n" +
+		"\n" +
+		"Output Options:\n" +
+		"    -w                     Suppress warnings about non-zero return codes.\n" +
+		"    -b                     Force binary mode output.\n" +
+		"    -l                     Force line mode output.\n" +
+		"    -s                     Serialize line mode output (by host).\n" +
+		"\n" +
+		"Commands and Arguments:\n" +
+		"    exec <cmd>             Invokes bash to execute cmd on the target(s).\n" +
+		"    add_role <role>        Adds role \"role\" to the target(s).\n" +
+		"    del_role <role>        Removes role \"role\" from the target(s).\n" +
+		"    roles [-v]             Lists roles. Verbose shows hosts in each role.\n" +
+		"    hosts [-v]             Lists hosts. Verbose shows roles on each host.\n" +
+		"\n" +
+		"For more information about Singularity and its usage, please read the\n" +
+		"documentation available online on Github.\n")
 }
