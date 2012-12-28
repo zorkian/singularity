@@ -77,8 +77,13 @@ func main() {
 	log = logging.InitFromFlags()
 	safedoozer.SetLogger(log)
 
+	// Connect to our doozer host. We have to do this early because alias
+	// validation requires doozer.
+	dzr = safedoozer.Dial(*dzrhost)
+	defer dzr.Close()
+
 	// Do some simple argument validation.
-	args := flag.Args()
+	args := expandAlias(flag.Args())
 	if len(args) == 0 {
 		flag.Usage()
 		os.Exit(1)
@@ -99,10 +104,6 @@ func main() {
 		log.Error("hostname is empty!")
 		os.Exit(1)
 	}
-
-	// Connect to our doozer host
-	dzr = safedoozer.Dial(*dzrhost)
-	defer dzr.Close()
 
 	zmq_ctx, err = zmq.NewContext()
 	if err != nil {
@@ -157,6 +158,10 @@ func main() {
 	if len(hosts) <= 0 {
 		log.Error("no hosts or roles specified")
 		os.Exit(1)
+	} else if len(hosts) == 1 {
+		// If we're targetting a single machine, we want to use binary mode by
+		// default unless the user explicitly set text mode.
+		binary = true && !*ftext
 	}
 
 	// If we have been told to get a global lock, let's try to get that now.
@@ -196,12 +201,8 @@ func main() {
 		cmdRoles()
 	case "hosts":
 		cmdHosts()
-	}
-
-	// If we're targetting multiple machines, adjust the output options unless
-	// the user has forced us to text mode.
-	if len(hosts) == 1 {
-		binary = true && !*ftext
+	case "alias":
+		cmdAlias(args[1:])
 	}
 
 	// Queue up the jobs and then execute them.
@@ -334,6 +335,8 @@ func clientUsage() {
 		"    del_role <role>        Removes role \"role\" from the target(s).\n" +
 		"    roles [-v]             Lists roles. Verbose shows hosts in each role.\n" +
 		"    hosts [-v]             Lists hosts. Verbose shows roles on each host.\n" +
+		"    alias <alias> <cmd>    Define an alias to execute the given command.\n" +
+		"    <alias>                Execute the command with this alias.\n" +
 		"\n" +
 		"For more information about Singularity and its usage, please read the\n" +
 		"documentation available online on Github.\n")

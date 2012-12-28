@@ -49,11 +49,30 @@ func isValidCommand(cmd string, args []string) bool {
 			return false
 		}
 		return true
+	case "alias":
+		if len(args) > 2 {
+			log.Error("command %s takes exactly 0, 1, or 2 arguments", cmd)
+			return false
+		}
+		return true
 	default:
 		log.Error("command %s unknown", cmd)
 		return false
 	}
 	return false
+}
+
+// expandAlias takes an argument string as input and if it fits what we know
+// of an alias, expands it.
+func expandAlias(arg []string) []string {
+	if len(arg) != 1 {
+		return arg
+	}
+	alias := dzr.GetLatest("/s/cfg/alias/" + arg[0])
+	if alias != "" {
+		return []string{"exec", alias}
+	}
+	return arg
 }
 
 func runJob(job *Job) {
@@ -227,6 +246,50 @@ func cmdRoles() {
 			fmt.Printf("%s: %s\n", role, strings.Join(hosts, ", "))
 		} else {
 			fmt.Println(role)
+		}
+	}
+	os.Exit(0)
+}
+
+// cmdAlias allows the user to define an alias. This is stored in doozer so it
+// is available to all clients.
+// TODO(mark): Consider storing the current settings with aliases so that when
+// you execute an alias you can set defaults.
+func cmdAlias(args []string) {
+	if len(args) == 0 {
+		// alias
+		// to print out all aliases
+		aliaslist := make([]string, 0)
+		aliases := make(map[string]string)
+		for _, alias := range dzr.GetdirLatestSafe("/s/cfg/alias") {
+			aliases[alias] = dzr.GetLatest("/s/cfg/alias/" + alias)
+			aliaslist = append(aliaslist, alias)
+		}
+		sort.Strings(aliaslist)
+		for _, alias := range aliaslist {
+			fmt.Printf("%s: %s\n", alias, aliases[alias])
+		}
+	} else if len(args) == 1 {
+		// alias <alias>
+		// to print out its contents
+		cmd := dzr.GetLatest("/s/cfg/alias/" + args[0])
+		if cmd != "" {
+			fmt.Printf("%s\n", cmd)
+		} else {
+			fmt.Printf("%s not an alias\n", args[0])
+		}
+	} else {
+		// alias <alias> <cmd>
+		// cmd can be "" to erase an alias
+		alias := strings.TrimSpace(args[0])
+		if alias == "" || strings.Contains(alias, " ") {
+			log.Error("invalid alias")
+			return
+		}
+		if args[1] == "" {
+			dzr.DelLatest("/s/cfg/alias/" + alias)
+		} else {
+			dzr.SetLatest("/s/cfg/alias/"+alias, args[1])
 		}
 	}
 	os.Exit(0)

@@ -33,6 +33,8 @@ Commands and Arguments:
     del_role <role>        Removes role "role" from the target(s).
     roles [-v]             Lists roles. Verbose shows hosts in each role.
     hosts [-v]             Lists hosts. Verbose shows roles on each host.
+    alias <alias> <cmd>    Define an alias to execute the given command.
+    <alias>                Execute the command with this alias.
 
 For more information about Singularity and its usage, please read the
 documentation available online on Github.
