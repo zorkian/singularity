@@ -162,7 +162,7 @@ func runAgent(port int) {
 
 	for {
 		log.Debug("(pump) reading")
-		remote, pb, err := singularity.ReadPb(&frontend)
+		remote, pb, err := singularity.ReadPb(&frontend, 0)
 		if err != nil {
 			log.Error("(pump) error reading from zmq socket: %s", err)
 			continue

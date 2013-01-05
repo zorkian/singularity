@@ -112,7 +112,7 @@ func doSimpleCommand(host, command, arg string) {
 
 	var stdout, stderr []byte
 	for {
-		remote, resp, err := singularity.ReadPb(sock)
+		remote, resp, err := singularity.ReadPb(sock, 20)
 		if err != nil {
 			log.Error("[%s] failed to read: %s", host, err)
 			return

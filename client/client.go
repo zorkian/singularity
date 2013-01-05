@@ -230,7 +230,7 @@ func proxyCommand(cmd string, args ...string) string {
 
 	var stdout, stderr string
 	for {
-		_, resp, err := singularity.ReadPb(psock)
+		_, resp, err := singularity.ReadPb(psock, 10)
 		if err != nil {
 			log.Error("failed to read: %s", err)
 			os.Exit(1)

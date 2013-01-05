@@ -16,7 +16,13 @@ import (
 
 // ReadPb sends any protobuf along a ZMQ socket. This makes sure to bundle our
 // type identifier at the beginning of the message.
-func ReadPb(sock *zmq.Socket) ([]byte, interface{}, error) {
+func ReadPb(sock *zmq.Socket, timeout int) ([]byte, interface{}, error) {
+	if timeout > 0 {
+		if !WaitForRecv(sock, timeout) {
+			return nil, nil, errors.New("recv timeout")
+		}
+	}
+
 	rresp, err := (*sock).RecvMultipart(0)
 	if err != nil {
 		return nil, nil, err
