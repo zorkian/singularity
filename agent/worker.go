@@ -140,21 +140,33 @@ func handleWorkerPump(lworker *worker) {
 	log.Debug("worker pump exiting")
 }
 
+// maintainWorkers does what you expect. We keep track of workers and the last
+// time we heard from the client attached. If it gets too old, we kill them.
 func maintainWorkers() {
-	// TODO: do we need to make sure we can't have multiple goroutines in
-	// workerMap?
+	// If we ever exit, it should be fatal to the agent. The worker maintenance
+	// function is vital.
+	defer func() { log.Fatal("maintainWorkers exited") }()
+
 	for now := range time.Tick(10 * time.Second) {
 		log.Debug("maintainWorkers: %d worker(s) in map", len(workerMap))
+		toTerminate := make([]*worker, 0)
+
+		workerLock.Lock()
 		for _, lworker := range workerMap {
 			if lworker.state != ALIVE {
 				continue
 			}
 
 			if now.After(lworker.alive) {
-				lworker.terminate()
+				toTerminate = append(toTerminate, lworker)
 			} else {
 				lworker.ping()
 			}
+		}
+		workerLock.Unlock()
+
+		for _, lworker := range toTerminate {
+			lworker.terminate()
 		}
 	}
 }
