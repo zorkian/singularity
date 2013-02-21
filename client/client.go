@@ -283,6 +283,7 @@ func socketForIp(ip string) *zmq.Socket {
 		log.Error("failed to create zmq socket: %s", err)
 		os.Exit(1)
 	}
+	sock.SetSockOptInt(zmq.LINGER, 0)
 
 	// BUG(mark): ask zmq where a broker is and talk to them.
 	err = sock.Connect(fmt.Sprintf("tcp://%s:7330", ip))
