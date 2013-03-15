@@ -82,13 +82,13 @@ func expandAlias(arg []string) []string {
 }
 
 func runJob(job *Job) {
-	doSimpleCommand(job.host, job.job[0], job.job[1])
+	doSimpleCommand(job.host, job.job[0], job.job[1:])
 }
 
 // doSimpleCommand executes a command against a backend.
 // FIXME: this can timeout in certain cases. We should make it so that the
 // client can abort itself if a remote is timing out.
-func doSimpleCommand(host, command, arg string) {
+func doSimpleCommand(host, command string, args []string) {
 	log.Debug("[%s] command: %s", host, command)
 
 	sock := socketForHost(host)
@@ -107,10 +107,15 @@ func doSimpleCommand(host, command, arg string) {
 		return
 	}
 
+	var bargs [][]byte
+	for _, arg := range args {
+		bargs = append(bargs, []byte(arg))
+	}
+
 	var ltimeout uint32 = uint32(timeout)
 	err := singularity.WritePb(sock, nil,
 		&singularity.Command{Command: []byte(command),
-			Args: [][]byte{[]byte(arg)}, Timeout: &ltimeout})
+			Args: bargs, Timeout: &ltimeout})
 	if err != nil {
 		log.Error("[%s] failed to send: %s", host, err)
 		return
