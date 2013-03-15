@@ -333,7 +333,7 @@ func clientUsage() {
 		"Commands and Arguments:\n" +
 		"    exec <cmd>             Invokes bash to execute cmd on the target(s).\n" +
 		"    add_role <role>        Adds role \"role\" to the target(s).\n" +
-		"    del_role <role>        Removes role \"role\" from the target(s).\n" +
+		"    del_role <role> [host] Removes role \"role\" from the target(s) or host.\n" +
 		"    roles [-v]             Lists roles. Verbose shows hosts in each role.\n" +
 		"    hosts [-v]             Lists hosts. Verbose shows roles on each host.\n" +
 		"    alias <alias> <cmd>    Define an alias to execute the given command.\n" +

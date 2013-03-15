@@ -68,12 +68,16 @@ func handleCommand(lworker *worker, cmd *singularity.Command) {
 			sendstr(fmt.Sprintf("added role %s", role))
 		}
 	case "del_role":
-		if len(args) != 1 {
-			sendstr("del_role requires exactly one argument")
+		if len(args) < 1 || len(args) > 2 {
+			sendstr("del_role requires exactly one or two arguments")
 		} else {
 			role := strings.TrimSpace(args[0])
-			dzr.DelLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, hostname))
-			sendstr(fmt.Sprintf("deleted role %s", role))
+			rhostname := hostname
+			if len(args) == 2 {
+				rhostname = strings.TrimSpace(args[1])
+			}
+			dzr.DelLatest(fmt.Sprintf("/s/cfg/role/%s/%s", role, rhostname))
+			sendstr(fmt.Sprintf("deleted role %s from %s", role, rhostname))
 		}
 	case "local_lock":
 		if len(args) != 1 {

@@ -43,9 +43,15 @@ func isValidCommand(cmd string, args []string) bool {
 			return false
 		}
 		return true
-	case "exec", "add_role", "del_role":
+	case "exec", "add_role":
 		if len(args) != 1 {
 			log.Error("command %s takes exactly one argument", cmd)
+			return false
+		}
+		return true
+	case "del_role":
+		if len(args) < 1 || len(args) > 2 {
+			log.Error("command %s takes exactly one or two arguments", cmd)
 			return false
 		}
 		return true
