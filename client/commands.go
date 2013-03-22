@@ -273,7 +273,7 @@ func cmdRoles() {
 		if verbose {
 			hosts := dzr.GetdirLatestSafe("/s/cfg/role/" + role)
 			sort.Strings(hosts)
-			fmt.Printf("%s: %s\n", role, strings.Join(hosts, ", "))
+			fmt.Printf("%s: %s\n", role, strings.Join(hosts, " "))
 		} else {
 			fmt.Println(role)
 		}
@@ -355,7 +355,7 @@ func cmdHosts() {
 				}
 				sort.Strings(roles)
 			}
-			fmt.Printf("%s: %s\n", node, strings.Join(roles, ", "))
+			fmt.Printf("%s: %s\n", node, strings.Join(roles, " "))
 		} else {
 			fmt.Println(node)
 		}
