@@ -119,6 +119,20 @@ func handleCommand(lworker *worker, cmd *singularity.Command) {
 				sendstr("failed")
 			}
 		}
+	case "trigger":
+		if len(args) < 2 || len(args) > 3 {
+			sendstr("trigger requires 2 or 3 arguments")
+		} else {
+			payload := "{}"
+			if len(args) == 3 {
+				payload = args[2]
+			}
+			if doSendTrigger(args[0], args[1], payload) {
+				sendstr("triggered")
+			} else {
+				sendstr("failed")
+			}
+		}
 	case "die":
 		sendstr("dying")
 		log.Fatal("somebody requested we die, good-bye cruel world!")

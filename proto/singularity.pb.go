@@ -13,6 +13,45 @@ var _ = proto.Marshal
 var _ = &json.SyntaxError{}
 var _ = math.Inf
 
+type Scope int32
+
+const (
+	Scope_LOCAL    Scope = 0
+	Scope_REGIONAL Scope = 1
+	Scope_GLOBAL   Scope = 2
+)
+
+var Scope_name = map[int32]string{
+	0: "LOCAL",
+	1: "REGIONAL",
+	2: "GLOBAL",
+}
+var Scope_value = map[string]int32{
+	"LOCAL":    0,
+	"REGIONAL": 1,
+	"GLOBAL":   2,
+}
+
+func (x Scope) Enum() *Scope {
+	p := new(Scope)
+	*p = x
+	return p
+}
+func (x Scope) String() string {
+	return proto.EnumName(Scope_name, int32(x))
+}
+func (x Scope) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.String())
+}
+func (x *Scope) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(Scope_value, data, "Scope")
+	if err != nil {
+		return err
+	}
+	*x = Scope(value)
+	return nil
+}
+
 type Command struct {
 	Command          []byte   `protobuf:"bytes,1,req,name=command" json:"command,omitempty"`
 	Args             [][]byte `protobuf:"bytes,2,rep,name=args" json:"args,omitempty"`
@@ -86,5 +125,40 @@ func (this *CommandOutput) GetStderr() []byte {
 	return nil
 }
 
+type Event struct {
+	Name             []byte `protobuf:"bytes,1,req,name=name" json:"name,omitempty"`
+	Scope            *Scope `protobuf:"varint,2,opt,name=scope,enum=singularity.Scope,def=0" json:"scope,omitempty"`
+	Payload          []byte `protobuf:"bytes,3,opt,name=payload" json:"payload,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (this *Event) Reset()         { *this = Event{} }
+func (this *Event) String() string { return proto.CompactTextString(this) }
+func (*Event) ProtoMessage()       {}
+
+const Default_Event_Scope Scope = Scope_LOCAL
+
+func (this *Event) GetName() []byte {
+	if this != nil {
+		return this.Name
+	}
+	return nil
+}
+
+func (this *Event) GetScope() Scope {
+	if this != nil && this.Scope != nil {
+		return *this.Scope
+	}
+	return Default_Event_Scope
+}
+
+func (this *Event) GetPayload() []byte {
+	if this != nil {
+		return this.Payload
+	}
+	return nil
+}
+
 func init() {
+	proto.RegisterEnum("singularity.Scope", Scope_name, Scope_value)
 }

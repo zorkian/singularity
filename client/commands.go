@@ -61,6 +61,25 @@ func isValidCommand(cmd string, args []string) bool {
 			return false
 		}
 		return true
+	case "trigger":
+		if len(args) < 2 || len(args) > 3 {
+			log.Error("command trigger takes 2 or 3 arguments")
+			return false
+		}
+		scope := args[1]
+		if scope != "global" && scope != "local" && scope != "regional" {
+			log.Error("trigger scope must be one of: global, local, regional")
+			return false
+		}
+		if len(args) == 3 {
+			payload := args[2]
+			if len(payload) < 2 || payload[0] != '{' ||
+				payload[len(payload)-1] != '}' {
+				log.Error("trigger payload must be a JSON object")
+				return false
+			}
+		}
+		return true
 	default:
 		log.Error("command %s unknown", cmd)
 		return false

@@ -1,5 +1,11 @@
 package singularity;
 
+enum Scope {
+	LOCAL = 0;
+	REGIONAL = 1;
+	GLOBAL = 2;
+}
+
 message Command {
 	required bytes command = 1;
 	repeated bytes args = 2;
@@ -17,4 +23,10 @@ message CommandFinished {
 message CommandOutput {
 	optional bytes stdout = 1;
 	optional bytes stderr = 2;	
+}
+
+message Event {
+	required bytes name = 1;
+	optional Scope scope = 2 [default = LOCAL];
+	optional bytes payload = 3;
 }
