@@ -24,7 +24,7 @@ func ReadPb(sock *zmq.Socket, timeout int) ([]byte, interface{}, error) {
 		}
 	}
 
-	rresp, err := (*sock).RecvMultipart(0)
+	rresp, err := sock.RecvMultipart(0)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -89,18 +89,18 @@ func WritePb(sock *zmq.Socket, remote []byte, pb interface{}) error {
 	copy(tbuf[1:], buf)
 
 	if remote != nil {
-		err = (*sock).Send(remote, zmq.SNDMORE)
+		err = sock.Send(remote, zmq.SNDMORE)
 		if err != nil {
 			return err
 		}
 
-		err = (*sock).Send(make([]byte, 0), zmq.SNDMORE)
+		err = sock.Send(make([]byte, 0), zmq.SNDMORE)
 		if err != nil {
 			return err
 		}
 	}
 
-	err = (*sock).Send(tbuf, 0)
+	err = sock.Send(tbuf, 0)
 	if err != nil {
 		return err
 	}
