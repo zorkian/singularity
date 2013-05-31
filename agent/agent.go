@@ -31,7 +31,7 @@ import (
 type InfoMap map[string]string
 type messagePump func([]byte, interface{}) error
 
-var zmq_ctx zmq.Context
+var zmq_ctx *zmq.Context
 var dzr *safedoozer.Conn
 var log logging.Logger
 var gid, hostname string
@@ -157,12 +157,12 @@ func runAgent(port int) {
 	// This is a global function used by everybody to send messages out to
 	// the clients.
 	sendMessage = func(remote []byte, pb interface{}) error {
-		return singularity.WritePb(&frontend, remote, pb)
+		return singularity.WritePb(frontend, remote, pb)
 	}
 
 	for {
 		log.Debug("(pump) reading")
-		remote, pb, err := singularity.ReadPb(&frontend, 0)
+		remote, pb, err := singularity.ReadPb(frontend, 0)
 		if err != nil {
 			log.Error("(pump) error reading from zmq socket: %s", err)
 			continue

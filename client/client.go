@@ -23,7 +23,7 @@ import (
 type EmptyFunc func()
 type WaitChan chan int
 
-var zmq_ctx zmq.Context
+var zmq_ctx *zmq.Context
 var psock *zmq.Socket
 var dzr *safedoozer.Conn
 var log logging.Logger
@@ -291,7 +291,7 @@ func socketForIp(ip string) *zmq.Socket {
 		log.Error("failed to connect to agent: %s", err)
 		os.Exit(1)
 	}
-	return &sock
+	return sock
 }
 
 func convertRoleToHosts(role string) []string {

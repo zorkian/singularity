@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	"time"
 )
 
 // ReadPb sends any protobuf along a ZMQ socket. This makes sure to bundle our
@@ -111,8 +112,8 @@ func WritePb(sock *zmq.Socket, remote []byte, pb interface{}) error {
 // when the socket is dead).
 func WaitForRecv(sock *zmq.Socket, timeout int) bool {
 	pi := make([]zmq.PollItem, 1)
-	pi[0] = zmq.PollItem{Socket: *sock, Events: zmq.POLLIN}
-	zmq.Poll(pi, int64(timeout*1000000))
+	pi[0] = zmq.PollItem{Socket: sock, Events: zmq.POLLIN}
+	zmq.Poll(pi, time.Duration(timeout)*time.Second)
 	if pi[0].REvents == zmq.POLLIN {
 		return true
 	}
@@ -124,8 +125,8 @@ func WaitForRecv(sock *zmq.Socket, timeout int) bool {
 // returns true while a socket is still being connected -- ZMQ likes to buffer.
 func WaitForSend(sock *zmq.Socket, timeout int) bool {
 	pi := make([]zmq.PollItem, 1)
-	pi[0] = zmq.PollItem{Socket: *sock, Events: zmq.POLLOUT}
-	zmq.Poll(pi, int64(timeout*1000000))
+	pi[0] = zmq.PollItem{Socket: sock, Events: zmq.POLLOUT}
+	zmq.Poll(pi, time.Duration(timeout)*time.Second)
 	if pi[0].REvents == zmq.POLLOUT {
 		return true
 	}
