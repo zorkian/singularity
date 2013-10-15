@@ -7,8 +7,8 @@
 package main
 
 import (
-	"../proto"
 	"fmt"
+	"github.com/xb95/singularity/proto"
 	"io"
 	"os/exec"
 	"strings"

@@ -9,12 +9,12 @@
 package main
 
 import (
-	"../proto"
-	"../safedoozer"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
 	logging "github.com/fluffle/golog/logging"
+	"github.com/xb95/singularity/proto"
+	"github.com/xb95/singularity/safedoozer"
 	"os"
 	"strings"
 )

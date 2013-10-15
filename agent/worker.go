@@ -8,7 +8,7 @@
 package main
 
 import (
-	"../proto"
+	"github.com/xb95/singularity/proto"
 	"sync"
 	"time"
 )

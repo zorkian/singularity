@@ -7,9 +7,9 @@
 package main
 
 import (
-	"../proto"
 	"bytes"
 	"fmt"
+	"github.com/xb95/singularity/proto"
 	"os"
 	"sort"
 	"strings"

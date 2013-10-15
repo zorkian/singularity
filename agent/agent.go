@@ -15,15 +15,14 @@
 package main
 
 import (
-	"../proto"
-	"../safedoozer"
 	crand "crypto/rand"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
-	"io"
-	//	"github.com/xb95/singularity/safedoozer"
 	logging "github.com/fluffle/golog/logging"
+	"github.com/xb95/singularity/proto"
+	"github.com/xb95/singularity/safedoozer"
+	"io"
 	"math/rand"
 	"time"
 )
